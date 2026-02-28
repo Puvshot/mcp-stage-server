@@ -1,0 +1,64 @@
+{
+  "action_directives": {
+    "CREATE": {
+      "must": [
+        "- ALLOWED_VERBS: [\"CREATE:\", \"EDIT:\", \"DELETE:\", \"MOVE:\", \"RENAME:\"]"
+      ],
+      "must_not": []
+    },
+    "DELETE": {
+      "must": [
+        "- ALLOWED_VERBS: [\"CREATE:\", \"EDIT:\", \"DELETE:\", \"MOVE:\", \"RENAME:\"]"
+      ],
+      "must_not": []
+    },
+    "EDIT": {
+      "must": [
+        "- ALLOWED_VERBS: [\"CREATE:\", \"EDIT:\", \"DELETE:\", \"MOVE:\", \"RENAME:\"]"
+      ],
+      "must_not": []
+    },
+    "MOVE": {
+      "must": [
+        "- ALLOWED_VERBS: [\"CREATE:\", \"EDIT:\", \"DELETE:\", \"MOVE:\", \"RENAME:\"]"
+      ],
+      "must_not": []
+    },
+    "RENAME": {
+      "must": [
+        "- ALLOWED_VERBS: [\"CREATE:\", \"EDIT:\", \"DELETE:\", \"MOVE:\", \"RENAME:\"]"
+      ],
+      "must_not": []
+    }
+  },
+  "always": {
+    "must": [
+      "REQUIRED_STRUCTURE_PLAN_MD:",
+      "RULE: \"MUST MATCH ITEM COUNT AND ORDER EXACTLY. AUTHORITATIVE.\"",
+      "RULE: \"VERBATIM LIST FROM PREPLAN.\"",
+      "- REQUIREMENT: \"EVERY SOURCE ITEM MUST MAP TO A DSL VERB\"",
+      "- STRICT_DEPENDENCY_ORDER: \"Packages MUST be ordered chronologically by dependency: 1. Infrastructure/DB (Models) -> 2. Business Logic (Backend/API) -> 3. User Interface (Views/UI).\"",
+      "- WILDCARD_EXPANSION: \"If any DSL entry in 'Files affected (DSL)' uses a glob/wildcard pattern (e.g. 'module/*'), the package assigned to modify those files MUST enumerate every concrete file in its '## Files to modify' section. Wildcards are disallowed in package file lists. If expansion is not determinable at plan time, list each anticipated file and mark each unknown as 'UNKNOWN: <reason>'.\"",
+      "RULE: \"MUST BE POPULATED VIA VALIDATION RULES\"",
+      "RULE: \"Determine and list the exact filenames for all packages to be created (e.g., `PACKAGE_1_database.md`, `PACKAGE_2_api.md`) based on the PACKAGE_SPLIT_RULES. This establishes a canonical list of package names BEFORE they are generated.\""
+    ],
+    "must_not": [
+      "- DO_NOT_GUESS(FILE_PATHS, FUNCTION_NAMES, DEPENDENCIES)",
+      "- DO_NOT_TRANSLATE_STRING_LITERALS_OR_CODE",
+      "- DOMAIN_COHESION: \"STRICT ISOLATION. Database/Models MUST NOT be in the same package as UI/Frontend modifications. Each logic layer requires a separate package. Exception: Trivial configuration updates without new logic (e.g. adding a flag to config and frontend) may be bundled to avoid overhead.\""
+    ]
+  },
+  "conversion_warnings": [],
+  "forbidden_imports": [],
+  "metadata": {
+    "derivation_mode": "deterministic_regex_v1",
+    "optional_non_derivable": {
+      "domain_specific_semantics": "UNKNOWN: conversion preserves textual constraints only and does not infer domain semantics"
+    },
+    "source_markdown": "G:\\AI\\Workspace\\Serwery MCP\\mcp-stage-server\\Rules\\_rules_plan_generation.md"
+  },
+  "templates": {
+    "default": "plan_generation: # Planning Rules — PLAN Generation (Lossless)"
+  },
+  "version": "1.0"
+}

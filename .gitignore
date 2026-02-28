@@ -1,0 +1,4 @@
+.agents/
+.cline/
+.outrepo/
+.pytest_cache/

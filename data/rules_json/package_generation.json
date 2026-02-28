@@ -1,0 +1,94 @@
+{
+  "action_directives": {
+    "CREATE": {
+      "must": [
+        "RULE: \"You MUST strictly group steps into logical stages (e.g., '### Stage 1: Preparation', '### Stage 2: Logic Modifications'). Detail the chronological steps inside each stage using strict file-action vocabulary (READ/CREATE/EDIT/DELETE/MOVE/RENAME).\"",
+        "2. EDIT/CREATE: ...",
+        "RULE: \"If this package performs DELETE or EDIT on any file that was the CREATE target of a prior package (i.e., the file is being cleaned up, migrated, or its imports are being restricted), the '## Testing & Verification' section MUST include all test commands from all prior packages that touched modules depending on that file. Enumerate them explicitly — do NOT use a wildcard suite.\""
+      ],
+      "must_not": []
+    },
+    "DELETE": {
+      "must": [
+        "RULE: \"You MUST strictly group steps into logical stages (e.g., '### Stage 1: Preparation', '### Stage 2: Logic Modifications'). Detail the chronological steps inside each stage using strict file-action vocabulary (READ/CREATE/EDIT/DELETE/MOVE/RENAME).\"",
+        "RULE: \"If this package performs DELETE or EDIT on any file that was the CREATE target of a prior package (i.e., the file is being cleaned up, migrated, or its imports are being restricted), the '## Testing & Verification' section MUST include all test commands from all prior packages that touched modules depending on that file. Enumerate them explicitly — do NOT use a wildcard suite.\""
+      ],
+      "must_not": []
+    },
+    "EDIT": {
+      "must": [
+        "RULE: \"You MUST strictly group steps into logical stages (e.g., '### Stage 1: Preparation', '### Stage 2: Logic Modifications'). Detail the chronological steps inside each stage using strict file-action vocabulary (READ/CREATE/EDIT/DELETE/MOVE/RENAME).\"",
+        "2. EDIT/CREATE: ...",
+        "RULE: \"If this package performs DELETE or EDIT on any file that was the CREATE target of a prior package (i.e., the file is being cleaned up, migrated, or its imports are being restricted), the '## Testing & Verification' section MUST include all test commands from all prior packages that touched modules depending on that file. Enumerate them explicitly — do NOT use a wildcard suite.\""
+      ],
+      "must_not": []
+    },
+    "MOVE": {
+      "must": [
+        "RULE: \"You MUST strictly group steps into logical stages (e.g., '### Stage 1: Preparation', '### Stage 2: Logic Modifications'). Detail the chronological steps inside each stage using strict file-action vocabulary (READ/CREATE/EDIT/DELETE/MOVE/RENAME).\""
+      ],
+      "must_not": []
+    },
+    "READ": {
+      "must": [
+        "RULE: \"If DEPENDS_ON is not NONE, list the specific files created or heavily modified by the dependencies that must be read FIRST. Use the verb 'READ:' for each item.\"",
+        "RULE: \"You MUST strictly group steps into logical stages (e.g., '### Stage 1: Preparation', '### Stage 2: Logic Modifications'). Detail the chronological steps inside each stage using strict file-action vocabulary (READ/CREATE/EDIT/DELETE/MOVE/RENAME).\"",
+        "1. READ: [files]"
+      ],
+      "must_not": []
+    },
+    "RENAME": {
+      "must": [
+        "RULE: \"You MUST strictly group steps into logical stages (e.g., '### Stage 1: Preparation', '### Stage 2: Logic Modifications'). Detail the chronological steps inside each stage using strict file-action vocabulary (READ/CREATE/EDIT/DELETE/MOVE/RENAME).\""
+      ],
+      "must_not": []
+    },
+    "TEST": {
+      "must": [
+        "RULE: \"EVERY Stage MUST strictly follow this layout and ALWAYS end with a TEST action:\"",
+        "N. TEST: `python -m pytest -q [relevant_test_files]",
+        "RULE: \"If you cannot determine a relevant test for a stage, output list item: `N. TEST: (No specific test identified. Re-run baseline)`\""
+      ],
+      "must_not": []
+    }
+  },
+  "always": {
+    "must": [
+      "- OUTPUT_MUST_BE_IN_ENGLISH_BUT_PRESERVE_DOMAIN_TERMS(heurestyka, dynamiczna heurestyka, routing, overlap SSOT)",
+      "REQUIRED_STRUCTURE_PACKAGE_MD:",
+      "RULE: \"Every package MUST start with a dependencies block. Example: `DEPENDS_ON: [PACKAGE_1]` or `DEPENDS_ON: NONE`\"",
+      "RULE: \"If DEPENDS_ON is not NONE, list the specific files created or heavily modified by the dependencies that must be read FIRST. Use the verb 'READ:' for each item.\"",
+      "RULE: \"DO NOT instruct to read PREPLAN.md. Only instruct to read PLAN.md as the absolute source of truth for planning.\"",
+      "RULE: \"Glob patterns (e.g. 'tools/module/*') from PLAN.md DSL MUST be expanded to a concrete explicit file list. If the exact files are unknown at plan time, list each anticipated file and mark unknowns as 'UNKNOWN: <reason>'. A bare wildcard '*' entry is NOT acceptable in this section.\"",
+      "RULE: \"You MUST strictly group steps into logical stages (e.g., '### Stage 1: Preparation', '### Stage 2: Logic Modifications'). Detail the chronological steps inside each stage using strict file-action vocabulary (READ/CREATE/EDIT/DELETE/MOVE/RENAME).\"",
+      "RULE: \"EVERY Stage MUST strictly follow this layout and ALWAYS end with a TEST action:\"",
+      "RULE: \"If you cannot determine a relevant test for a stage, output list item: `N. TEST: (No specific test identified. Re-run baseline)`\"",
+      "RULE: \"For PACKAGE_1 ONLY, add a mandatory step 0 to the 'Implementation Steps': 'Execute `git add . && git commit -m \\\"chore: save state before Plan execution\\\"`'\"",
+      "RULE: \"Include explicit commands to run tests. MUST include this exact warning clause:",
+      "RULE: \"For every test listed here that does NOT correspond to a file in '## Files to modify', append a note directly below that test command in the generated package: '(smoke test — if this fails → DEBUG HANDOFF immediately; do NOT attempt to fix in this package — this is a pre-existing issue or upstream regression)'\"",
+      "RULE: \"If this package performs DELETE or EDIT on any file that was the CREATE target of a prior package (i.e., the file is being cleaned up, migrated, or its imports are being restricted), the '## Testing & Verification' section MUST include all test commands from all prior packages that touched modules depending on that file. Enumerate them explicitly — do NOT use a wildcard suite.\"",
+      "RULE: \"This exact section MUST appear at the absolute end of every generated package file.\"",
+      "When you have finished implementing this package and run the tests, you MUST execute the following steps in EXACTLY this order.",
+      "> Running the `code` command MUST be your absolute last action in the system before stopping. DO NOT read, write, or interact with `EXECUTION_LOG.md` or ANY other file after executing the `code` command. This guarantees the next package will remain the active tab for the user. Do not output anything after running the command."
+    ],
+    "must_not": [
+      "- DO_NOT_OMIT_FINAL_CODE_COMMAND",
+      "RULE: \"Translate the Goal from PLAN.md to clear English, BUT you MUST NOT translate exact domain terms or tool names found in the Polish source (e.g. keep 'heurestyka', 'dynamiczna heurestyka', 'routing', 'overlap SSOT' unchanged).\"",
+      "RULE: \"List files to modify. Inject the following text exactly: '> **CRITICAL GUARANTEE:** You must NOT touch, edit, or refactor any file not listed in this section.'\"",
+      "RULE: \"For every STOP CONDITION in PLAN.md that describes a technical prohibition (forbidden import, circular dependency, anti-pattern), the package that CREATES the module subject to that prohibition MUST include a Stage that creates or runs the contract test enforcing that prohibition. Do NOT defer this test to a later cleanup package.\""
+    ]
+  },
+  "conversion_warnings": [],
+  "forbidden_imports": [],
+  "metadata": {
+    "derivation_mode": "deterministic_regex_v1",
+    "optional_non_derivable": {
+      "domain_specific_semantics": "UNKNOWN: conversion preserves textual constraints only and does not infer domain semantics"
+    },
+    "source_markdown": "G:\\AI\\Workspace\\Serwery MCP\\mcp-stage-server\\Rules\\_rules_package_generation.md"
+  },
+  "templates": {
+    "default": "package_generation: # Planning Rules — Package Generation | ### Stage [Number]: [Name] | ## 📋 After completing this package (STRICT FINAL SEQUENCE)"
+  },
+  "version": "1.0"
+}

@@ -1,0 +1,93 @@
+{
+  "version": "1.0",
+  "action_directives": {
+    "READ": {
+      "must": [
+        "Read the full target content before making any decision",
+        "Read every file listed in 'Context to read' before touching anything in this stage",
+        "Read PLAN.md as the single source of truth — do NOT read PREPLAN.md"
+      ],
+      "must_not": [
+        "Assume missing details without checking source files",
+        "Skip reading dependency files listed in 'Context to read'"
+      ]
+    },
+    "CREATE": {
+      "must": [
+        "Create only files explicitly listed in files_in_scope",
+        "For PACKAGE_1 only: execute 'git add . && git commit -m \"chore: save state before Plan execution\"' as step 0 before any file changes"
+      ],
+      "must_not": [
+        "Add placeholder TODO/FIXME blocks",
+        "Create any file not listed in '## Files to modify' of the active package",
+        "Touch, edit, or refactor any file not listed in the active package scope"
+      ]
+    },
+    "EDIT": {
+      "must": [
+        "Preserve existing contracts unless the stage explicitly changes them",
+        "Read the file before editing it",
+        "Touch ONLY files listed in files_in_scope"
+      ],
+      "must_not": [
+        "Refactor unrelated modules",
+        "Touch, edit, or refactor any file not listed in '## Files to modify' of the active package"
+      ]
+    },
+    "DELETE": {
+      "must": [
+        "Verify no other module imports the file before deleting",
+        "Run the full test suite from all prior packages that depended on this file after deletion"
+      ],
+      "must_not": [
+        "Delete a file that is still imported elsewhere without updating all call-sites first"
+      ]
+    },
+    "TEST": {
+      "must": [
+        "Run the specified test command and report exact output",
+        "Report the result immediately via test.report — do not delay",
+        "For small issues (typos, missing imports, syntax): attempt exactly ONE fix, then if still failing — generate DEBUG HANDOFF and stop",
+        "For complex logic or structural issues: do NOT attempt any fix — generate DEBUG HANDOFF immediately and stop"
+      ],
+      "must_not": [
+        "Advance stage when test result is FAIL",
+        "Attempt more than ONE fix for any failing test",
+        "Run the final sequence if tests are failing",
+        "Skip running the test command at the end of every stage"
+      ]
+    },
+    "GIT": {
+      "must": [
+        "Execute git commands exactly as provided in git_instruction from the MCP response",
+        "Execute git commands in the exact order specified"
+      ],
+      "must_not": [
+        "Modify the git command provided by MCP",
+        "Skip the git commit after a PASS test report"
+      ]
+    }
+  },
+  "always": {
+    "must": [
+      "Follow package constraints and stop conditions verbatim",
+      "Touch only files listed for the active package",
+      "Call guard.report before test.report — every stage, no exceptions",
+      "After completing a package: update EXECUTION_LOG.md first, then git commit, then open next package file in VS Code as the absolute last action",
+      "When generating DEBUG HANDOFF: include plan name, package file path, resume point, and automated_run flag"
+    ],
+    "must_not": [
+      "Skip required sequence: guard.report → test.report → stage.advance",
+      "Read, write, or interact with any file after executing the 'code' command to open the next package",
+      "Chain multiple fixes — one change, then tests, then report",
+      "Proceed to the next stage if the current stage test is failing"
+    ]
+  },
+  "forbidden_imports": [],
+  "templates": {
+    "EDIT+TEST": "1. READ all files_in_scope\n2. EDIT as specified\n3. TEST: run test command\n4. If FAIL (small issue): one fix attempt → re-run → if still FAIL → DEBUG HANDOFF → STOP\n5. If FAIL (complex): DEBUG HANDOFF immediately → STOP\n6. If PASS: call guard.report → test.report → await git_instruction",
+    "CREATE+TEST": "1. READ all context_to_read files\n2. CREATE files as specified\n3. TEST: run test command\n4. If FAIL (small issue): one fix attempt → re-run → if still FAIL → DEBUG HANDOFF → STOP\n5. If FAIL (complex): DEBUG HANDOFF immediately → STOP\n6. If PASS: call guard.report → test.report → await git_instruction",
+    "READ+EDIT+TEST": "1. READ all files_in_scope and context_to_read\n2. EDIT as specified\n3. TEST: run test command\n4. If FAIL (small issue): one fix attempt → re-run → if still FAIL → DEBUG HANDOFF → STOP\n5. If FAIL (complex): DEBUG HANDOFF immediately → STOP\n6. If PASS: call guard.report → test.report → await git_instruction",
+    "CREATE+EDIT+TEST": "1. READ all context_to_read files\n2. CREATE and EDIT as specified\n3. TEST: run test command\n4. If FAIL (small issue): one fix attempt → re-run → if still FAIL → DEBUG HANDOFF → STOP\n5. If FAIL (complex): DEBUG HANDOFF immediately → STOP\n6. If PASS: call guard.report → test.report → await git_instruction"
+  }
+}

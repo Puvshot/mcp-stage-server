@@ -1,0 +1,31 @@
+{
+  "action_directives": {},
+  "always": {
+    "must": [
+      "- MUST_SUPPORT_CROSS_PROJECT: You must evaluate packages from different selected projects against each other, not just packages within the same project.",
+      "- MUST_SUPPORT_N_PACKAGES: You must try to cluster as many safe packages as possible (3, 4, 5+).",
+      "RULE: \"Map out execution order using DEPENDS_ON. Treat DEPENDS_ON: NONE as the immediately executable baseline layer. Packages cannot run simultaneously if one depends on the other.\"",
+      "RULE: \"Compare 'Files to modify' across all packages that have no inter-dependencies.\"",
+      "RULE: \"A group has a COLLISION if ANY file appears in more than one package within that group, even if the packages are from completely different project plans.\"",
+      "RULE: \"A group is SAFE FOR PARALLEL EXECUTION only if the intersection of their 'Files to modify' sets is completely empty (0 shared files).\"",
+      "RULE: \"Maximize group sizes. A group of 4 non-colliding packages is better than two groups of 2.\"",
+      "RULE: \"Your final output MUST follow this structure exactingly. Generate it in Polish.\""
+    ],
+    "must_not": [
+      "- DO_NOT_MODIFY_FILES: You are strictly reporting on collisions."
+    ]
+  },
+  "conversion_warnings": [],
+  "forbidden_imports": [],
+  "metadata": {
+    "derivation_mode": "deterministic_regex_v1",
+    "optional_non_derivable": {
+      "domain_specific_semantics": "UNKNOWN: conversion preserves textual constraints only and does not infer domain semantics"
+    },
+    "source_markdown": "G:\\AI\\Workspace\\Serwery MCP\\mcp-stage-server\\Rules\\_rules_package_collision.md"
+  },
+  "templates": {
+    "default": "package_collision: # Validation Rules — Package Collision Analysis | # 🕵️ Raport Walidacji Paczek | ## 📦 Analizowane Projekty i Paczki: | ## 🚦 Grupy gotowe do równoległego wdrożenia (BEZ KOLIZJI): | ## ⚠️ Wykryte kolizje między podanymi paczkami (NIE uruchamiać razem): | ## 🔗 Drzewo ścisłych zależności wewnątrz projektów:"
+  },
+  "version": "1.0"
+}

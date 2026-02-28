@@ -1,0 +1,31 @@
+{
+  "action_directives": {},
+  "always": {
+    "must": [
+      "REQUIRED_SECTIONS:",
+      "VALIDATION_LOGIC:",
+      "FOREACH expected_section IN REQUIRED_SECTIONS:",
+      "ON_PASS:"
+    ],
+    "must_not": [
+      "ACTION: HALT",
+      "ON_FAILURE:",
+      "2. HALT_EXECUTION",
+      "3. BLOCK(PLAN.md GENERATION)",
+      "4. BLOCK(PACKAGE_*.md GENERATION)"
+    ]
+  },
+  "conversion_warnings": [],
+  "forbidden_imports": [],
+  "metadata": {
+    "derivation_mode": "deterministic_regex_v1",
+    "optional_non_derivable": {
+      "domain_specific_semantics": "UNKNOWN: conversion preserves textual constraints only and does not infer domain semantics"
+    },
+    "source_markdown": "G:\\AI\\Workspace\\Serwery MCP\\mcp-stage-server\\Rules\\_rules_preplan_gate.md"
+  },
+  "templates": {
+    "default": "preplan_gate: # Planning Rules — PREPLAN Gate"
+  },
+  "version": "1.0"
+}

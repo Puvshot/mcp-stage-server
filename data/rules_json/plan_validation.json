@@ -1,0 +1,46 @@
+{
+  "action_directives": {
+    "CREATE": {
+      "must": [
+        "RULE: \"For each file listed under '## Files affected (DSL)' with verb CREATE or EDIT,"
+      ],
+      "must_not": []
+    },
+    "EDIT": {
+      "must": [
+        "| 1 | <copied 1:1> | EDIT: path/to/file.ext | 1:1 | PASS |",
+        "- EDIT: ... — reason: <specific>",
+        "RULE: \"For each file listed under '## Files affected (DSL)' with verb CREATE or EDIT,"
+      ],
+      "must_not": []
+    }
+  },
+  "always": {
+    "must": [
+      "- MISSING: \"REQUIRED_SECTION\"",
+      "- EMPTY: \"REQUIRED_SECTION (UNLESS EXPLICIT 'NONE')\"",
+      "- SOFTENED: \"CONSTRAINT (e.g. MUST -> SHOULD)\"",
+      "### Required sections presence",
+      "RULE: \"For each file listed under '## Files affected (DSL)' with verb CREATE or EDIT,",
+      "NOTE: \"UNCOVERED = WARNING only, not FATAL_FAIL. Planner must acknowledge each UNCOVERED item.\""
+    ],
+    "must_not": [
+      "ON_FAIL:",
+      "- HALT_EXECUTION",
+      "- If YES: STOP AND REQUEST CORRECTED PREPLAN.md. HALT PACKAGE GENERATION."
+    ]
+  },
+  "conversion_warnings": [],
+  "forbidden_imports": [],
+  "metadata": {
+    "derivation_mode": "deterministic_regex_v1",
+    "optional_non_derivable": {
+      "domain_specific_semantics": "UNKNOWN: conversion preserves textual constraints only and does not infer domain semantics"
+    },
+    "source_markdown": "G:\\AI\\Workspace\\Serwery MCP\\mcp-stage-server\\Rules\\_rules_plan_validation.md"
+  },
+  "templates": {
+    "default": "plan_validation: # Planning Rules — PLAN Validation (Structural Diff) | ## VALIDATION (STRUCTURAL DIFF AGAINST SOURCE PREPLAN) | ### Required sections presence | ### Section content check (NONE vs empty) | ### NON-NEGOTIABLE CONSTRAINTS | ### STOP CONDITIONS"
+  },
+  "version": "1.0"
+}
