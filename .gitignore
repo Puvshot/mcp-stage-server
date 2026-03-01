@@ -2,4 +2,5 @@
 .cline/
 .outrepo/
 .pytest_cache/
+.VSCodeCounter/
 data/sessions/

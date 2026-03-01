@@ -27,15 +27,32 @@ Agent wywołuje: `mss_connect`
 > - ***Debug** (Ścisły protokół do naprawy kodu. Pokaż mi błąd, a ja przeanalizuję pliki, postawię hipotezę i naprawię usterkę krok po kroku)*
 > - ***Workout** (Burza mózgów i planowanie. Porozmawiajmy o architekturze, rozważmy opcje i zapisujmy ustalenia na bieżąco, bez pisania kodu na ślepo)"*
 
+Jeśli serwer wykryje katalogi projektów w `data/projects/` (lub w katalogu zdefiniowanym przez `MSS_PROJECTS_DIR`),
+to ten sam komunikat zawiera dodatkowo sekcje:
+- `✅ Gotowe / zainicjalizowane`
+- `⏳ W toku / zatrzymane`
+
+W każdej sekcji pojawiają się gotowe komendy kontynuacji, m.in.:
+- `plan_load_or_init <plan_id> <plan_dir>`
+- `stage_current <plan_dir>` (tylko dla projektów `in_progress` z pełnym runtime: `state.json` + `plan_cache.json`)
+
 **`next_actions` sugerowane przez serwer:**
+- `debug` — Skrót: ustawia tryb debug
+- `workout` — Skrót: ustawia tryb workout
 - `mode debug` — Uruchamia tryb debug
 - `mode workout` — Uruchamia tryb workout
+- `plan_load_or_init <plan_id> <plan_dir>` — Wczytuje wykryty projekt
+- `stage_current <plan_dir>` — Pokazuje aktywny etap projektu w toku (warunkowo)
 
 ---
 
 ## 2. Wybór trybu: `mss_set_mode`
 
 Agent wywołuje: `mss_set_mode(mode="debug")` lub `mss_set_mode(mode="workout")`
+
+Skróty akceptowane przez warstwę interakcji użytkownika/agenta:
+- `debug` → równoważne `mode debug`
+- `workout` → równoważne `mode workout`
 
 Dozwolone wartości trybu: `audit`, `planning`, `debug`, `workout`, `run`
 
@@ -234,3 +251,15 @@ Serwer analizuje aktualny tryb i artefakty sesji i zwraca kontekstowe `next_acti
 - Tryb `audit` z artefaktem → `preplan` lub `show audit`
 - Tryb `planning` bez preplanu → `preplan`
 - Tryb `planning` z preplanem → `plan`
+- Tryb `debug` bez `end_debug` → `mss.end_debug` (najwyższy priorytet)
+- Tryb `debug` z `end_debug`, ale bez PASS w `summarize_details` → `mss.summarize_details`
+- Tryb `workout` bez PASS w `summarize_details` → `mss.summarize_details`
+
+### Priorytet akcji statusowych vs podpowiedzi projektowe
+- Dla `mode=debug` i `mode=workout` `mss_status` zwraca **jedną akcję sesyjną** wynikającą z gate (blokada end-to-end).
+- Dla `mode=debug` i `mode=workout` nie są dokładane podpowiedzi wznowienia projektów (`plan_load_or_init`, `stage_current`).
+- Podpowiedzi projektowe są dokładane dopiero dla trybów innych niż `debug/workout`.
+
+Dodatkowo `mss_status` zwraca sekcję wykrytych projektów (tak jak `mss_connect`) i dokłada akcje:
+- `plan_load_or_init <plan_id> <plan_dir>` dla każdego wykrytego projektu
+- `stage_current <plan_dir>` dla projektów `in_progress` z runtime (`state.json` + `plan_cache.json`)

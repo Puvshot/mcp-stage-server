@@ -5,6 +5,18 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from mss.engines.artifact_flow_gate import summarize_details_passed
+from mss.engines.projects_discovery import (
+    compose_message as compose_projects_message,
+    discover_projects,
+    merge_next_actions,
+    project_next_actions,
+)
+from mss.engines.session_actions_policy import (
+    next_actions_for_set_mode,
+    next_actions_for_status,
+)
+from mss.storage.artifact_store import get_artifact as get_stored_artifact
 from mss.storage.session_store import (
     create_session,
     get_active_session,
@@ -15,6 +27,7 @@ from mss.storage.session_store import (
 
 ALLOWED_MODES = {"audit", "planning", "debug", "workout", "run"}
 SESSION_DIR_ENV = "MSS_SESSION_DIR"
+PROJECTS_DIR_ENV = "MSS_PROJECTS_DIR"
 
 _CONNECT_MESSAGE = (
     "Połączono. Wyświetl użytkownikowi DOKŁADNIE ten tekst: "
@@ -22,7 +35,8 @@ _CONNECT_MESSAGE = (
     "- **Debug** (Ścisły protokół do naprawy kodu. Pokaż mi błąd, a ja przeanalizuję "
     "pliki, postawię hipotezę i naprawię usterkę krok po kroku)\\n"
     "- **Workout** (Burza mózgów i planowanie. Porozmawiajmy o architekturze, "
-    "rozważmy opcje i zapisujmy ustalenia na bieżąco, bez pisania kodu na ślepo)'"
+    "rozważmy opcje i zapisujmy ustalenia na bieżąco, bez pisania kodu na ślepo)\\n\\n"
+    "Wybór trybu: wpisz `debug` lub `workout` (skróty), albo `mode debug` / `mode workout`.'"
 )
 
 
@@ -48,13 +62,15 @@ def connect() -> dict[str, Any]:
         set_active_session(session_dir=session_dir, session_id=str(created_session_payload["session_id"]))
         active_session = created_session_payload
 
+    project_summaries = discover_projects(_projects_dir())
+
     return _response(
         ok=True,
         session_id=str(active_session.get("session_id", "")),
         mode=_normalize_mode(active_session.get("mode")),
-        message=_CONNECT_MESSAGE,
+        message=compose_projects_message(base_message=_CONNECT_MESSAGE, project_summaries=project_summaries),
         artifacts=_normalize_artifacts(active_session.get("artifacts")),
-        next_actions=_action_connect(),
+        next_actions=merge_next_actions(_action_connect(), project_next_actions(project_summaries)),
         warnings=[],
     )
 
@@ -77,17 +93,44 @@ def status() -> dict[str, Any]:
             warnings=["active_session_not_found"],
         )
 
+    session_id = str(active_session.get("session_id", "")).strip()
     mode = _normalize_mode(active_session.get("mode"))
     artifacts = _normalize_artifacts(active_session.get("artifacts"))
     artifact_names = {str(item.get("name", "")) for item in artifacts if isinstance(item, dict)}
+    summarize_details_artifact = None
+    if session_id:
+        summarize_details_artifact = get_stored_artifact(
+            session_dir=_session_dir(),
+            session_id=session_id,
+            artifact_name="summarize_details",
+        )
+    summarize_details_pass = summarize_details_passed(summarize_details_artifact)
+    include_project_resume_hints = mode not in {"workout", "debug"}
+
+    project_summaries: list[dict[str, Any]] = []
+    if include_project_resume_hints:
+        project_summaries = discover_projects(_projects_dir())
+
+    session_actions = next_actions_for_status(
+        mode=mode,
+        artifact_names=artifact_names,
+        summarize_details_pass=summarize_details_pass,
+    )
+    next_actions = session_actions
+    if include_project_resume_hints:
+        next_actions = merge_next_actions(session_actions, project_next_actions(project_summaries))
+
+    message_text = "Status sesji pobrany."
+    if include_project_resume_hints:
+        message_text = compose_projects_message(base_message=message_text, project_summaries=project_summaries)
 
     return _response(
         ok=True,
-        session_id=str(active_session.get("session_id", "")),
+        session_id=session_id,
         mode=mode,
-        message="Status sesji pobrany.",
+        message=message_text,
         artifacts=artifacts,
-        next_actions=_status_next_actions(mode=mode, artifact_names=artifact_names),
+        next_actions=next_actions,
         warnings=[],
     )
 
@@ -143,57 +186,15 @@ def set_mode(mode: str) -> dict[str, Any]:
         mode=normalized_mode,
         message=f"Ustawiono tryb: {normalized_mode}.",
         artifacts=artifacts,
-        next_actions=_set_mode_next_actions(normalized_mode),
+        next_actions=next_actions_for_set_mode(normalized_mode),
         warnings=[],
     )
 
 
-def _status_next_actions(mode: str | None, artifact_names: set[str]) -> list[dict[str, str]]:
-    if mode is None:
-        return _action_connect()
-
-    if mode == "audit":
-        if "audit" in artifact_names:
-            return [
-                _action("preplan", "Przygotuj preplan na bazie audytu"),
-                _action("show audit", "Pokaż artefakt audytu"),
-            ]
-        return [_action("audit", "Uruchom audyt kodu")]
-
-    if mode == "planning":
-        if "preplan" in artifact_names:
-            return [_action("plan", "Wygeneruj plan implementacji")]
-        return [_action("preplan", "Wygeneruj preplan")]
-
-    return _set_mode_next_actions(mode)
-
-
-def _set_mode_next_actions(mode: str) -> list[dict[str, str]]:
-    mapping: dict[str, list[dict[str, str]]] = {
-        "audit": [
-            _action("audit", "Uruchom audyt kodu"),
-            _action("status", "Sprawdź stan sesji"),
-        ],
-        "planning": [
-            _action("preplan", "Przygotuj preplan"),
-            _action("plan", "Wygeneruj plan"),
-            _action("status", "Sprawdź stan sesji"),
-        ],
-        "debug": [
-            _action("audit", "Uruchom audyt kodu"),
-            _action("status", "Sprawdź stan sesji"),
-        ],
-        "workout": [_action("status", "Sprawdź stan sesji")],
-        "run": [
-            _action("plan", "Wygeneruj plan"),
-            _action("status", "Sprawdź stan sesji"),
-        ],
-    }
-    return mapping.get(mode, [_action("status", "Sprawdź stan sesji")])
-
-
 def _action_connect() -> list[dict[str, str]]:
     return [
+        _action("debug", "Skrót: ustawia tryb debug"),
+        _action("workout", "Skrót: ustawia tryb workout"),
         _action("mode debug", "Uruchamia tryb debug"),
         _action("mode workout", "Uruchamia tryb workout"),
     ]
@@ -234,6 +235,16 @@ def _session_dir() -> Path:
     if raw_override:
         env_path = Path(raw_override)
     return env_path.resolve()
+
+
+def _projects_dir() -> Path:
+    projects_path = Path.cwd() / "data" / "projects"
+    from os import getenv
+
+    raw_override = getenv(PROJECTS_DIR_ENV)
+    if raw_override:
+        projects_path = Path(raw_override)
+    return projects_path.resolve()
 
 
 def _normalize_artifacts(raw_artifacts: Any) -> list[dict[str, Any]]:

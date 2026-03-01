@@ -96,9 +96,35 @@ Znajdziesz to w bloku `env: {}` podczas wpisywania komendy ładującej.
    - **Debug** – włączenie ścisłego protokołu do diagnozowania i naprawy błędów kodu.
    - **Workout** – wejście w tryb burzy mózgów i planowania projektów architektonicznych bez "pisania kodu na ślepo".
    
+   Możesz wybrać tryb na dwa sposoby:
+   - skrótem: `debug` albo `workout`
+   - pełną komendą: `mode debug` albo `mode workout`
+   
 4. **Przejście do kodowania (Opcjonalnie):** Oprócz luźnych trybów sesyjnych (jak Debug/Workout), możesz od razu kazać mu działać na konkretnym planie budowy. Wtedy piszesz:
    > "Rozpocznijmy zadanie z planu deweloperskiego. Wczytaj `plan_load_or_init` z katalogu X, a następnie zanalizuj etap: `stage_current`".
 5. Odtąd, agent będzie przestrzegał sztywnej maszyny stanów określonej w odpowiednio załadowanym planie.
+
+### 5.1 Automatyczne wykrywanie projektów (`data/projects`)
+Po połączeniu (`mss_connect`) oraz przy odczycie statusu (`mss_status`) MSS może automatycznie wyświetlić
+listę projektów wykrytych po stronie serwera.
+
+Domyślny katalog skanowania:
+- `data/projects/`
+
+Opcjonalny override:
+- zmienna środowiskowa `MSS_PROJECTS_DIR`
+
+#### Jak MSS klasyfikuje projekty
+- **Gotowe / zainicjalizowane**:
+  - istnieje `plan_cache.json`, lub
+  - istnieje `state.json` z `pipeline_status=complete`.
+- **W toku / zatrzymane**:
+  - istnieje `state.json` z `pipeline_status != complete`.
+
+#### Jakie komendy zobaczysz w `next_actions`
+- `plan_load_or_init <plan_id> <plan_dir>` — dla każdego wykrytego projektu.
+- `stage_current <plan_dir>` — tylko dla projektów `in_progress` z pełnym runtime
+  (`state.json` + `plan_cache.json`).
 
 ---
 

@@ -3,10 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from mss.engines.summary_details_validator import (
-    extract_details_coverage,
-    extract_files_affected,
-    validate_details_against_files,
+from mss.engines.artifact_flow_gate import (
+    build_coverage_validation,
+    extract_details_text,
+    extract_summary_text,
+    gate_for_artifact_tool,
+    gate_for_planning_mode,
+    normalize_mode,
+    summarize_details_passed,
 )
 from mss.storage.artifact_store import (
     get_artifact as storage_get_artifact,
@@ -15,39 +19,35 @@ from mss.storage.artifact_store import (
 )
 from mss.storage.session_store import get_active_session
 
-
 SESSION_DIR_ENV = "MSS_SESSION_DIR"
+_CAPABILITIES = [
+    "capabilities",
+    "list_artifacts",
+    "get_artifact",
+    "workout",
+    "end_workout",
+    "summarize",
+    "summarize_details",
+    "audit",
+    "prepare",
+    "planning",
+    "package",
+    "run",
+    "debug",
+    "end_debug",
+]
 
 
 def capabilities() -> dict[str, Any]:
-    """Return available MSS artifact operations for active session mode.
-
-    This read-only tool is idempotent.
-    """
+    """Return available MSS artifact operations for active session mode."""
     active_session = _active_session()
     if active_session is None:
         return _missing_session_response()
-
-    mode = _normalize_mode(active_session.get("mode"))
-    return {
-        "ok": True,
-        "mode": mode,
-        "capabilities": _capabilities_for_mode(mode),
-        "next_actions": [],
-        "warnings": [],
-    }
+    return {"ok": True, "mode": normalize_mode(active_session.get("mode")), "capabilities": _CAPABILITIES, "next_actions": [], "warnings": []}
 
 
 def workout(note: str | None = None) -> dict[str, Any]:
-    """Persist workout artifact and return next actions for workout flow.
-
-    Contract for `note` content:
-    - Note must include per-file sections, preferred format: `### <filepath>`.
-    - For each file include: decisions, rejected alternatives with reason, and implications/tests.
-    - Keep content verbatim (no compression), because it is later rewritten into `summarize_details`.
-
-    This tool is side-effecting and non-idempotent.
-    """
+    """Persist workout artifact and return next actions for workout flow."""
     return _save_named_artifact(
         artifact_name="workout",
         payload={"note": _normalize_optional_text(note)},
@@ -58,14 +58,12 @@ def workout(note: str | None = None) -> dict[str, Any]:
                 "Podsumuj sesję i pamiętaj, że summarize_details wymaga później sekcji per plik",
             ),
         ],
+        gate_tool_name="workout",
     )
 
 
 def end_workout(summary: str | None = None) -> dict[str, Any]:
-    """Persist end_workout artifact and return next actions.
-
-    This tool is side-effecting and non-idempotent.
-    """
+    """Persist end_workout artifact and return next actions."""
     return _save_named_artifact(
         artifact_name="end_workout",
         payload={"summary": _normalize_optional_text(summary)},
@@ -74,10 +72,7 @@ def end_workout(summary: str | None = None) -> dict[str, Any]:
 
 
 def summarize(summary: str | None = None) -> dict[str, Any]:
-    """Persist summarize artifact and return summary metadata.
-
-    This tool is side-effecting and non-idempotent.
-    """
+    """Persist summarize artifact and return summary metadata."""
     return _save_named_artifact(
         artifact_name="summarize",
         payload={"summary": _normalize_optional_text(summary)},
@@ -89,17 +84,7 @@ def summarize(summary: str | None = None) -> dict[str, Any]:
 
 
 def summarize_details(details: str | None = None) -> dict[str, Any]:
-    """Persist summarize_details artifact with strict FILES AFFECTED coverage check.
-
-    Contract for `details` content:
-    - For each file in FILES AFFECTED from summarize artifact, write section `### <filepath>`.
-    - `details` is the target format and must align with FILES AFFECTED from summarize.
-    - Copy verbatim from workout/debug notes — no compression.
-    - Include exact classes/functions/fields/signatures/algorithm decisions.
-
-    Validation is deterministic and compares `details` coverage against FILES AFFECTED extracted from
-    latest `summarize` artifact payload. This tool is side-effecting and non-idempotent.
-    """
+    """Persist summarize_details artifact with strict FILES AFFECTED coverage check."""
     active_session = _active_session()
     if active_session is None:
         return _missing_session_response()
@@ -112,39 +97,28 @@ def summarize_details(details: str | None = None) -> dict[str, Any]:
         session_id=session_id,
         artifact_name="summarize",
     )
-    summarize_summary = _extract_summarize_summary_text(summarize_artifact)
+    coverage_payload = build_coverage_validation(
+        summary_text=extract_summary_text(summarize_artifact),
+        details_text=normalized_details or "",
+    )
+    validation_passed = bool(coverage_payload["passed"])
 
-    files_affected = extract_files_affected(summarize_summary)
-    covered_paths = extract_details_coverage(normalized_details or "")
-    missing_files = validate_details_against_files(files_affected, covered_paths)
-
-    validation_passed = len(files_affected) > 0 and len(missing_files) == 0
-    next_actions = [
-        _action("mss.planning", "Przejdź do planowania")
-        if validation_passed
-        else _action("mss.summarize_details", "Uzupełnij brakujące szczegóły")
-    ]
+    next_actions = [_action("mss.planning", "Przejdź do planowania") if validation_passed else _action("mss.summarize_details", "Uzupełnij brakujące szczegóły")]
 
     warnings: list[str] = []
     if summarize_artifact is None:
         warnings.append("summarize_artifact_not_found")
     if normalized_details is None:
         warnings.append("details_missing")
-    if not files_affected:
+    if not coverage_payload["validation"]["files_affected"]:
         warnings.append("files_affected_not_found")
-    if missing_files:
+    if coverage_payload["validation"]["missing"]:
         warnings.append("missing_files_coverage")
 
     artifact_payload = {
         "details": normalized_details,
-        "validation": {
-            "status": "pass" if validation_passed else "fail",
-            "files_affected": files_affected,
-            "covered": sorted(covered_paths),
-            "missing": missing_files,
-        },
+        "validation": coverage_payload["validation"],
     }
-
     saved_artifact = storage_save_artifact(
         session_dir=_session_dir(),
         session_id=session_id,
@@ -152,17 +126,12 @@ def summarize_details(details: str | None = None) -> dict[str, Any]:
         artifact_payload=artifact_payload,
     )
     if saved_artifact is None:
-        return {
-            "ok": False,
-            "message": "Nie udało się zapisać artefaktu.",
-            "next_actions": [_action("mss.status", "Sprawdź status sesji")],
-            "warnings": ["artifact_save_failed"],
-        }
+        return _artifact_save_failed_response()
 
     return {
         "ok": validation_passed,
         "artifact": saved_artifact,
-        "validation": artifact_payload["validation"],
+        "validation": coverage_payload["validation"],
         "next_actions": next_actions,
         "warnings": warnings,
         "message": (
@@ -174,10 +143,7 @@ def summarize_details(details: str | None = None) -> dict[str, Any]:
 
 
 def audit(summary: str | None = None) -> dict[str, Any]:
-    """Persist audit artifact and return next actions for audit flow.
-
-    This tool is side-effecting and non-idempotent.
-    """
+    """Persist audit artifact and return next actions for audit flow."""
     return _save_named_artifact(
         artifact_name="audit",
         payload={"summary": _normalize_optional_text(summary)},
@@ -185,26 +151,22 @@ def audit(summary: str | None = None) -> dict[str, Any]:
             _action("mss.prepare", "Przygotuj preplan"),
             _action("mss.planning", "Przejdź do planowania"),
         ],
+        gate_tool_name="audit",
     )
 
 
 def prepare(notes: str | None = None) -> dict[str, Any]:
-    """Persist prepare artifact and return next actions.
-
-    This tool is side-effecting and non-idempotent.
-    """
+    """Persist prepare artifact and return next actions."""
     return _save_named_artifact(
         artifact_name="prepare",
         payload={"notes": _normalize_optional_text(notes)},
         next_actions=[_action("mss.planning", "Przejdź do planowania")],
+        gate_tool_name="prepare",
     )
 
 
 def planning(plan_outline: str | None = None) -> dict[str, Any]:
-    """Persist planning artifact and return next actions.
-
-    This tool is side-effecting and non-idempotent.
-    """
+    """Persist planning artifact and return next actions."""
     active_session = _active_session()
     if active_session is None:
         return _missing_session_response()
@@ -221,38 +183,34 @@ def planning(plan_outline: str | None = None) -> dict[str, Any]:
         artifact_name="summarize_details",
     )
 
-    summarize_summary = _extract_summarize_summary_text(summarize_artifact)
-    files_affected = extract_files_affected(summarize_summary)
-    details_text = _extract_summarize_details_text(summarize_details_artifact)
-    covered_paths = extract_details_coverage(details_text)
-    missing_files = validate_details_against_files(files_affected, covered_paths)
-
+    coverage_payload = build_coverage_validation(
+        summary_text=extract_summary_text(summarize_artifact),
+        details_text=extract_details_text(summarize_details_artifact),
+    )
     has_summary_details = summarize_details_artifact is not None
-    has_full_coverage = len(files_affected) > 0 and len(missing_files) == 0
+    has_full_coverage = bool(coverage_payload["passed"])
+
     if not has_summary_details or not has_full_coverage:
         warnings: list[str] = []
         if summarize_artifact is None:
             warnings.append("summarize_artifact_not_found")
         if summarize_details_artifact is None:
             warnings.append("summarize_details_artifact_not_found")
-        if not files_affected:
+        if not coverage_payload["validation"]["files_affected"]:
             warnings.append("files_affected_not_found")
-        if missing_files:
+        if coverage_payload["validation"]["missing"]:
             warnings.append("missing_files_coverage")
 
-        return {
-            "ok": False,
-            "message": "Przed planning wymagane jest poprawne summarize_details z pokryciem FILES AFFECTED.",
-            "validation": {
-                "files_affected": files_affected,
-                "covered": sorted(covered_paths),
-                "missing": missing_files,
-            },
-            "next_actions": [
-                _action("mss.summarize_details", "Uzupełnij szczegóły per plik")
-            ],
-            "warnings": warnings,
-        }
+        return _planning_coverage_failed_response(coverage_payload["validation"], warnings)
+
+    flow_state = _collect_flow_state(session_id)
+    planning_mode_gate = gate_for_planning_mode(
+        mode=normalize_mode(active_session.get("mode")),
+        summarize_details_pass=flow_state["summarize_details_pass"],
+        has_end_debug=flow_state["has_end_debug"],
+    )
+    if planning_mode_gate["blocked"]:
+        return _gate_blocked_response(planning_mode_gate)
 
     return _save_named_artifact(
         artifact_name="planning",
@@ -262,51 +220,37 @@ def planning(plan_outline: str | None = None) -> dict[str, Any]:
 
 
 def package(summary: str | None = None) -> dict[str, Any]:
-    """Persist package artifact and return next actions.
-
-    This tool is side-effecting and non-idempotent.
-    """
+    """Persist package artifact and return next actions."""
     return _save_named_artifact(
         artifact_name="package",
         payload={"summary": _normalize_optional_text(summary)},
         next_actions=[_action("mss.run", "Uruchom wykonanie pakietu")],
+        gate_tool_name="package",
     )
 
 
 def run(output: str | None = None) -> dict[str, Any]:
-    """Persist run artifact and return next actions.
-
-    This tool is side-effecting and non-idempotent.
-    """
+    """Persist run artifact and return next actions."""
     return _save_named_artifact(
         artifact_name="run",
         payload={"output": _normalize_optional_text(output)},
         next_actions=[_action("mss.debug", "Przejdź do debugowania")],
+        gate_tool_name="run",
     )
 
 
 def debug(findings: str | None = None) -> dict[str, Any]:
-    """Persist debug artifact and return next actions.
-
-    Contract for `findings` content:
-    - Findings should be collected per file, preferred format: `### <filepath>`.
-    - Keep content verbatim (no compression) for later reuse.
-    - For each file include: observations, hypotheses, experiments, result, and final fix.
-
-    This tool is side-effecting and non-idempotent.
-    """
+    """Persist debug artifact and return next actions."""
     return _save_named_artifact(
         artifact_name="debug",
         payload={"findings": _normalize_optional_text(findings)},
         next_actions=[_action("mss.end_debug", "Zakończ debugowanie")],
+        gate_tool_name="debug",
     )
 
 
 def end_debug(summary: str | None = None) -> dict[str, Any]:
-    """Persist end_debug artifact and return next actions.
-
-    This tool is side-effecting and non-idempotent.
-    """
+    """Persist end_debug artifact and return next actions."""
     return _save_named_artifact(
         artifact_name="end_debug",
         payload={"summary": _normalize_optional_text(summary)},
@@ -315,43 +259,24 @@ def end_debug(summary: str | None = None) -> dict[str, Any]:
 
 
 def list_artifacts() -> dict[str, Any]:
-    """List stored artifacts metadata for currently active MSS session.
-
-    This read-only tool is idempotent.
-    """
+    """List stored artifacts metadata for currently active MSS session."""
     active_session = _active_session()
     if active_session is None:
         return _missing_session_response()
-
     session_id = str(active_session.get("session_id", "")).strip()
     artifacts = storage_list_artifacts(session_dir=_session_dir(), session_id=session_id)
-    return {
-        "ok": True,
-        "session_id": session_id,
-        "artifacts": artifacts,
-        "next_actions": [],
-        "warnings": [],
-    }
+    return {"ok": True, "session_id": session_id, "artifacts": artifacts, "next_actions": [], "warnings": []}
 
 
 def get_artifact(name: str) -> dict[str, Any]:
-    """Load latest artifact payload by name for active MSS session.
-
-    This read-only tool is idempotent.
-    """
+    """Load latest artifact payload by name for active MSS session."""
     active_session = _active_session()
     if active_session is None:
         return _missing_session_response()
 
     normalized_name = str(name).strip()
     if not normalized_name:
-        return {
-            "ok": False,
-            "artifact": None,
-            "next_actions": [{"command": "list_artifacts", "description": "Wyświetl dostępne artefakty"}],
-            "warnings": ["invalid_artifact_name"],
-            "message": "Nieprawidłowa nazwa artefaktu.",
-        }
+        return _invalid_artifact_name_response()
 
     session_id = str(active_session.get("session_id", "")).strip()
     artifact_document = storage_get_artifact(
@@ -360,20 +285,9 @@ def get_artifact(name: str) -> dict[str, Any]:
         artifact_name=normalized_name,
     )
     if artifact_document is None:
-        return {
-            "ok": False,
-            "artifact": None,
-            "next_actions": [{"command": "list_artifacts", "description": "Wyświetl dostępne artefakty"}],
-            "warnings": ["artifact_not_found"],
-            "message": f"Nie znaleziono artefaktu: {normalized_name}.",
-        }
+        return _artifact_not_found_response(normalized_name)
 
-    return {
-        "ok": True,
-        "artifact": artifact_document,
-        "next_actions": [],
-        "warnings": [],
-    }
+    return {"ok": True, "artifact": artifact_document, "next_actions": [], "warnings": []}
 
 
 def _active_session() -> dict[str, Any] | None:
@@ -384,12 +298,25 @@ def _save_named_artifact(
     artifact_name: str,
     payload: dict[str, Any],
     next_actions: list[dict[str, str]],
+    gate_tool_name: str | None = None,
 ) -> dict[str, Any]:
     active_session = _active_session()
     if active_session is None:
         return _missing_session_response()
 
     session_id = str(active_session.get("session_id", "")).strip()
+    if gate_tool_name is not None:
+        flow_state = _collect_flow_state(session_id)
+        gate_decision = gate_for_artifact_tool(
+            mode=normalize_mode(active_session.get("mode")),
+            tool_name=gate_tool_name,
+            artifact_names=flow_state["artifact_names"],
+            summarize_details_pass=flow_state["summarize_details_pass"],
+            has_end_debug=flow_state["has_end_debug"],
+        )
+        if gate_decision["blocked"]:
+            return _gate_blocked_response(gate_decision)
+
     saved_artifact = storage_save_artifact(
         session_dir=_session_dir(),
         session_id=session_id,
@@ -397,18 +324,27 @@ def _save_named_artifact(
         artifact_payload=payload,
     )
     if saved_artifact is None:
-        return {
-            "ok": False,
-            "message": "Nie udało się zapisać artefaktu.",
-            "next_actions": [_action("mss.status", "Sprawdź status sesji")],
-            "warnings": ["artifact_save_failed"],
-        }
+        return _artifact_save_failed_response()
 
+    return {"ok": True, "artifact": saved_artifact, "next_actions": next_actions, "warnings": []}
+
+
+def _collect_flow_state(session_id: str) -> dict[str, Any]:
+    artifacts = storage_list_artifacts(session_dir=_session_dir(), session_id=session_id)
+    artifact_names = {
+        str(artifact_metadata.get("name", "")).strip().lower()
+        for artifact_metadata in artifacts
+        if isinstance(artifact_metadata, dict)
+    }
+    summarize_details_artifact = storage_get_artifact(
+        session_dir=_session_dir(),
+        session_id=session_id,
+        artifact_name="summarize_details",
+    )
     return {
-        "ok": True,
-        "artifact": saved_artifact,
-        "next_actions": next_actions,
-        "warnings": [],
+        "artifact_names": artifact_names,
+        "summarize_details_pass": summarize_details_passed(summarize_details_artifact),
+        "has_end_debug": "end_debug" in artifact_names,
     }
 
 
@@ -423,43 +359,27 @@ def _session_dir() -> Path:
 
 
 def _missing_session_response() -> dict[str, Any]:
-    return {
-        "ok": False,
-        "message": "Brak aktywnej sesji. Uruchom `mss.connect`.",
-        "next_actions": [{"command": "connect", "description": "Połącz z MSS"}],
-        "warnings": ["active_session_not_found"],
-    }
+    return {"ok": False, "message": "Brak aktywnej sesji. Uruchom `mss.connect`.", "next_actions": [_action("connect", "Połącz z MSS")], "warnings": ["active_session_not_found"]}
 
 
-def _normalize_mode(raw_mode: Any) -> str | None:
-    if raw_mode is None:
-        return None
-    mode = str(raw_mode).strip().lower()
-    if not mode:
-        return None
-    return mode
+def _invalid_artifact_name_response() -> dict[str, Any]:
+    return {"ok": False, "artifact": None, "next_actions": [_action("list_artifacts", "Wyświetl dostępne artefakty")], "warnings": ["invalid_artifact_name"], "message": "Nieprawidłowa nazwa artefaktu."}
 
 
-def _capabilities_for_mode(mode: str | None) -> list[str]:
-    base_capabilities = [
-        "capabilities",
-        "list_artifacts",
-        "get_artifact",
-        "workout",
-        "end_workout",
-        "summarize",
-        "summarize_details",
-        "audit",
-        "prepare",
-        "planning",
-        "package",
-        "run",
-        "debug",
-        "end_debug",
-    ]
-    if mode in {"workout", "audit", "planning", "debug", "run"}:
-        return base_capabilities
-    return base_capabilities
+def _artifact_not_found_response(artifact_name: str) -> dict[str, Any]:
+    return {"ok": False, "artifact": None, "next_actions": [_action("list_artifacts", "Wyświetl dostępne artefakty")], "warnings": ["artifact_not_found"], "message": f"Nie znaleziono artefaktu: {artifact_name}."}
+
+
+def _artifact_save_failed_response() -> dict[str, Any]:
+    return {"ok": False, "message": "Nie udało się zapisać artefaktu.", "next_actions": [_action("mss.status", "Sprawdź status sesji")], "warnings": ["artifact_save_failed"]}
+
+
+def _planning_coverage_failed_response(validation_payload: dict[str, Any], warnings: list[str]) -> dict[str, Any]:
+    return {"ok": False, "message": "Przed planning wymagane jest poprawne summarize_details z pokryciem FILES AFFECTED.", "validation": validation_payload, "next_actions": [_action("mss.summarize_details", "Uzupełnij szczegóły per plik")], "warnings": warnings}
+
+
+def _gate_blocked_response(gate_payload: dict[str, Any]) -> dict[str, Any]:
+    return {"ok": False, "message": str(gate_payload.get("message", "STOP: Operacja zablokowana przez gate.")), "next_actions": gate_payload.get("next_actions", []), "warnings": gate_payload.get("warnings", [])}
 
 
 def _normalize_optional_text(raw_value: Any) -> str | None:
@@ -472,37 +392,4 @@ def _normalize_optional_text(raw_value: Any) -> str | None:
 
 
 def _action(command: str, description: str) -> dict[str, str]:
-    return {
-        "command": command,
-        "description": description,
-    }
-
-
-def _extract_summarize_summary_text(summarize_artifact: dict[str, Any] | None) -> str:
-    if not isinstance(summarize_artifact, dict):
-        return ""
-
-    payload = summarize_artifact.get("payload")
-    if not isinstance(payload, dict):
-        return ""
-
-    summary_text = payload.get("summary")
-    if not isinstance(summary_text, str):
-        return ""
-
-    return summary_text
-
-
-def _extract_summarize_details_text(summarize_details_artifact: dict[str, Any] | None) -> str:
-    if not isinstance(summarize_details_artifact, dict):
-        return ""
-
-    payload = summarize_details_artifact.get("payload")
-    if not isinstance(payload, dict):
-        return ""
-
-    details_text = payload.get("details")
-    if not isinstance(details_text, str):
-        return ""
-
-    return details_text
+    return {"command": command, "description": description}

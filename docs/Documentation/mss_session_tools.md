@@ -16,6 +16,36 @@ Poza rdzeniem wykonawczym i przemieszczaniem kursora w pętli kodowania, MCP Sta
 - **`mss_status`**: Informuje o obecnym stanie połączeń, trybie pracy, zrzuconych artefaktach, etc.
 - **`mss_set_mode`**: Pozwala na przestawienie trybu w systemie (`audit`, `planning`, `debug`, `workout`, `run`).
 
+### Kontrakt `mss_status` (spójność z gate)
+`mss_status` korzysta z tych samych warunków blokad co warstwa gate narzędzi artefaktowych.
+
+Priorytet decyzji dla trybów sesyjnych:
+- `mode=debug` i brak `end_debug` → `next_actions: [mss.end_debug]`
+- `mode=debug` i jest `end_debug`, ale brak PASS w `summarize_details` → `next_actions: [mss.summarize_details]`
+- `mode=workout` i brak PASS w `summarize_details` → `next_actions: [mss.summarize_details]`
+
+Zasada priorytetu odpowiedzi:
+- Dla `mode=debug` i `mode=workout` zwracana jest jedna akcja sesyjna wynikająca z gate.
+- Podpowiedzi wznowienia projektów (`plan_load_or_init`, `stage_current`) są dokładane dopiero, gdy `mode ≠ debug/workout`.
+
+### Wykrywanie projektów po stronie MSS (`data/projects`)
+Warstwa sesji może automatycznie wykrywać projekty trzymane po stronie serwera i dokładać
+komendy kontynuacji do `message` oraz `next_actions`.
+
+Domyślna lokalizacja projektów:
+- `data/projects/`
+
+Opcjonalny override:
+- `MSS_PROJECTS_DIR`
+
+Minimalne kryteria klasyfikacji:
+- **Gotowy / zainicjalizowany**: istnieje `plan_cache.json` lub `state.json` z `pipeline_status=complete`.
+- **W toku / zatrzymany**: istnieje `state.json` z `pipeline_status != complete`.
+
+Dokładane akcje kontekstowe:
+- `plan_load_or_init <plan_id> <plan_dir>` — dla każdego wykrytego projektu.
+- `stage_current <plan_dir>` — tylko dla projektów `in_progress` z runtime (`state.json` + `plan_cache.json`).
+
 ## 2. Narzędzia Zarządzania Artefaktami (Artifacts Tools)
 Rodzina narzędzi, które nakazują agentowi trzymanie i generowanie raportów w wyznaczonych folderach. Wszystkie zapisują swoje przemyślenia w formie zrzutu tekstu / podsumowania (`summary`, `notes`, `findings` itd.).
 

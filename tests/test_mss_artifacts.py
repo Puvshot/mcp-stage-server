@@ -24,6 +24,8 @@ from mss_server.main import (
     mcp_mss_planning,
     mcp_mss_prepare,
     mcp_mss_run,
+    mcp_mss_set_mode,
+    mcp_mss_status,
     mcp_mss_summarize,
     mcp_mss_summarize_details,
     mcp_mss_workout,
@@ -189,3 +191,108 @@ FILES AFFECTED
         {"command": "mss.summarize_details", "description": "Uzupełnij szczegóły per plik"}
     ]
     assert "summarize_details_artifact_not_found" in planning_payload["warnings"]
+
+
+def test_workout_mode_blocks_critical_tools_until_summarize_details_pass(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("MSS_SESSION_DIR", str(tmp_path))
+    connect_payload = connect()
+    assert connect_payload["ok"] is True
+
+    assert mcp_mss_set_mode(mode="workout")["ok"] is True
+
+    blocked_payload = mcp_mss_audit(summary="audit")
+    assert blocked_payload["ok"] is False
+    assert blocked_payload["message"].startswith("STOP:")
+    assert blocked_payload["next_actions"] == [
+        {"command": "mss.summarize_details", "description": "Uzupełnij summarize_details i doprowadź do PASS"}
+    ]
+
+    summarize_payload = mcp_mss_summarize(
+        summary="""
+FILES AFFECTED
+- `mss/tools/mss_artifacts.py`
+""".strip()
+    )
+    assert summarize_payload["ok"] is True
+
+    summarize_details_payload = mcp_mss_summarize_details(
+        details="""
+### mss/tools/mss_artifacts.py
+opis zmian
+""".strip()
+    )
+    assert summarize_details_payload["ok"] is True
+
+    unblocked_payload = mcp_mss_audit(summary="audit")
+    assert unblocked_payload["ok"] is True
+
+
+def test_debug_mode_blocks_workout_until_end_debug_and_summarize_details_pass(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("MSS_SESSION_DIR", str(tmp_path))
+    connect_payload = connect()
+    assert connect_payload["ok"] is True
+
+    assert mcp_mss_set_mode(mode="debug")["ok"] is True
+
+    blocked_without_end_debug = mcp_mss_workout(note="brainstorm")
+    assert blocked_without_end_debug["ok"] is False
+    assert blocked_without_end_debug["message"].startswith("STOP:")
+    assert blocked_without_end_debug["next_actions"] == [
+        {"command": "mss.end_debug", "description": "Zapisz end_debug"}
+    ]
+
+    assert mcp_mss_end_debug(summary="done")["ok"] is True
+
+    blocked_without_pass = mcp_mss_workout(note="brainstorm")
+    assert blocked_without_pass["ok"] is False
+    assert blocked_without_pass["message"].startswith("STOP:")
+    assert blocked_without_pass["next_actions"] == [
+        {"command": "mss.summarize_details", "description": "Uzupełnij summarize_details i doprowadź do PASS"}
+    ]
+
+    assert (
+        mcp_mss_summarize(
+            summary="""
+FILES AFFECTED
+- `mss/tools/mss_artifacts.py`
+""".strip()
+        )["ok"]
+        is True
+    )
+    assert (
+        mcp_mss_summarize_details(
+            details="""
+### mss/tools/mss_artifacts.py
+opis zmian
+""".strip()
+        )["ok"]
+        is True
+    )
+
+    unblocked_payload = mcp_mss_workout(note="brainstorm")
+    assert unblocked_payload["ok"] is True
+
+
+def test_status_matches_gate_priority_for_debug_and_workout_modes(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("MSS_SESSION_DIR", str(tmp_path))
+    connect_payload = connect()
+    assert connect_payload["ok"] is True
+
+    assert mcp_mss_set_mode(mode="debug")["ok"] is True
+    debug_status_payload = mcp_mss_status()
+    assert debug_status_payload["ok"] is True
+    assert debug_status_payload["next_actions"] == [
+        {"command": "mss.end_debug", "description": "Zapisz end_debug"}
+    ]
+
+    assert mcp_mss_end_debug(summary="done")["ok"] is True
+    debug_status_after_end_payload = mcp_mss_status()
+    assert debug_status_after_end_payload["next_actions"] == [
+        {"command": "mss.summarize_details", "description": "Uzupełnij summarize_details i doprowadź do PASS"}
+    ]
+
+    assert mcp_mss_set_mode(mode="workout")["ok"] is True
+    workout_status_payload = mcp_mss_status()
+    assert workout_status_payload["next_actions"] == [
+        {"command": "mss.summarize_details", "description": "Uzupełnij summarize_details i doprowadź do PASS"}
+    ]
