@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -32,3 +34,17 @@ def test_load_rules_payload_returns_hard_error_for_missing_required_kind(
     assert error_payload.code == "MISSING_REQUIRED_RULES_KIND"
     assert error_payload.file_path == str(missing_rules_path)
     assert error_payload.validation_issues == []
+
+
+def test_rules_hash_is_stable_across_calls() -> None:
+    first_payload = loader_module.load_rules_payload("package_generation")
+    second_payload = loader_module.load_rules_payload("package_generation")
+
+    first_hash = hashlib.sha256(
+        json.dumps(first_payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    second_hash = hashlib.sha256(
+        json.dumps(second_payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+
+    assert first_hash == second_hash

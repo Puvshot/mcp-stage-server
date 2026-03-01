@@ -2,3 +2,4 @@
 .cline/
 .outrepo/
 .pytest_cache/
+data/sessions/

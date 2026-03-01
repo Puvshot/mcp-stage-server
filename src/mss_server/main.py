@@ -6,6 +6,7 @@ all domain/tool execution to `mss/*` via `bootstrap_tool_registry`.
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
@@ -53,6 +54,21 @@ def call_tool(tool_name: str, **kwargs: Any) -> dict[str, Any]:
     return tool_handler(**kwargs)
 
 
+def _forbidden_verbose_mode_response(tool_name: str) -> dict[str, Any]:
+    return {
+        "status": "error",
+        "code": "FORBIDDEN_VERBOSE_MODE",
+        "errors": [
+            {
+                "code": "FORBIDDEN_VERBOSE_MODE",
+                "message": f"{tool_name} requires MCP_DEBUG_VERBOSE=1",
+                "file": None,
+                "severity": "error",
+            }
+        ],
+    }
+
+
 app = FastMCP("mcp-stage-server")
 
 
@@ -83,6 +99,8 @@ def mcp_plan_reset(plan_dir: str) -> dict[str, Any]:
 @app.tool(name="plan_export", description="Export cached plan to markdown backup file.")
 def mcp_plan_export(plan_dir: str) -> dict[str, Any]:
     """MCP wrapper for plan.export."""
+    if not os.getenv("MCP_DEBUG_VERBOSE"):
+        return _forbidden_verbose_mode_response("plan.export")
     return call_tool("plan.export", plan_dir=plan_dir)
 
 
@@ -155,6 +173,8 @@ def mcp_rules_directive_pack(plan_dir: str, stage_id: str) -> dict[str, Any]:
 @app.tool(name="rules_get_full", description="Return fully merged rules payload for runtime directory.")
 def mcp_rules_get_full(plan_dir: str) -> dict[str, Any]:
     """MCP wrapper for rules.get_full."""
+    if not os.getenv("MCP_DEBUG_VERBOSE"):
+        return _forbidden_verbose_mode_response("rules.get_full")
     return call_tool("rules.get_full", plan_dir=plan_dir)
 
 
@@ -219,6 +239,108 @@ def mcp_audit_tail(plan_dir: str, last_n: int = 50) -> dict[str, Any]:
 def mcp_audit_clear(plan_dir: str) -> dict[str, Any]:
     """MCP wrapper for audit.clear."""
     return call_tool("audit.clear", plan_dir=plan_dir)
+
+
+@app.tool(name="mss_connect", description="Create or resume active MSS session.")
+def mcp_mss_connect() -> dict[str, Any]:
+    """MCP wrapper for mss.connect."""
+    return call_tool("mss.connect")
+
+
+@app.tool(name="mss_status", description="Return active MSS session status.")
+def mcp_mss_status() -> dict[str, Any]:
+    """MCP wrapper for mss.status."""
+    return call_tool("mss.status")
+
+
+@app.tool(name="mss_set_mode", description="Set active MSS session mode.")
+def mcp_mss_set_mode(mode: str) -> dict[str, Any]:
+    """MCP wrapper for mss.set_mode."""
+    return call_tool("mss.set_mode", mode=mode)
+
+
+@app.tool(name="mss_capabilities", description="Return MSS artifact capabilities for active session.")
+def mcp_mss_capabilities() -> dict[str, Any]:
+    """MCP wrapper for mss.capabilities."""
+    return call_tool("mss.capabilities")
+
+
+@app.tool(name="mss_list_artifacts", description="List MSS artifacts for active session.")
+def mcp_mss_list_artifacts() -> dict[str, Any]:
+    """MCP wrapper for mss.list_artifacts."""
+    return call_tool("mss.list_artifacts")
+
+
+@app.tool(name="mss_get_artifact", description="Get one MSS artifact by name for active session.")
+def mcp_mss_get_artifact(name: str) -> dict[str, Any]:
+    """MCP wrapper for mss.get_artifact."""
+    return call_tool("mss.get_artifact", name=name)
+
+
+@app.tool(name="mss_workout", description="Persist workout artifact for active MSS session.")
+def mcp_mss_workout(note: str | None = None) -> dict[str, Any]:
+    """MCP wrapper for mss.workout."""
+    return call_tool("mss.workout", note=note)
+
+
+@app.tool(name="mss_end_workout", description="Persist end_workout artifact for active MSS session.")
+def mcp_mss_end_workout(summary: str | None = None) -> dict[str, Any]:
+    """MCP wrapper for mss.end_workout."""
+    return call_tool("mss.end_workout", summary=summary)
+
+
+@app.tool(name="mss_summarize", description="Persist summarize artifact for active MSS session.")
+def mcp_mss_summarize(summary: str | None = None) -> dict[str, Any]:
+    """MCP wrapper for mss.summarize."""
+    return call_tool("mss.summarize", summary=summary)
+
+
+@app.tool(name="mss_summarize_details", description="Persist summarize_details artifact for active MSS session.")
+def mcp_mss_summarize_details(details: str | None = None) -> dict[str, Any]:
+    """MCP wrapper for mss.summarize_details."""
+    return call_tool("mss.summarize_details", details=details)
+
+
+@app.tool(name="mss_audit", description="Persist audit artifact for active MSS session.")
+def mcp_mss_audit(summary: str | None = None) -> dict[str, Any]:
+    """MCP wrapper for mss.audit."""
+    return call_tool("mss.audit", summary=summary)
+
+
+@app.tool(name="mss_prepare", description="Persist prepare artifact for active MSS session.")
+def mcp_mss_prepare(notes: str | None = None) -> dict[str, Any]:
+    """MCP wrapper for mss.prepare."""
+    return call_tool("mss.prepare", notes=notes)
+
+
+@app.tool(name="mss_planning", description="Persist planning artifact for active MSS session.")
+def mcp_mss_planning(plan_outline: str | None = None) -> dict[str, Any]:
+    """MCP wrapper for mss.planning."""
+    return call_tool("mss.planning", plan_outline=plan_outline)
+
+
+@app.tool(name="mss_package", description="Persist package artifact for active MSS session.")
+def mcp_mss_package(summary: str | None = None) -> dict[str, Any]:
+    """MCP wrapper for mss.package."""
+    return call_tool("mss.package", summary=summary)
+
+
+@app.tool(name="mss_run", description="Persist run artifact for active MSS session.")
+def mcp_mss_run(output: str | None = None) -> dict[str, Any]:
+    """MCP wrapper for mss.run."""
+    return call_tool("mss.run", output=output)
+
+
+@app.tool(name="mss_debug", description="Persist debug artifact for active MSS session.")
+def mcp_mss_debug(findings: str | None = None) -> dict[str, Any]:
+    """MCP wrapper for mss.debug."""
+    return call_tool("mss.debug", findings=findings)
+
+
+@app.tool(name="mss_end_debug", description="Persist end_debug artifact for active MSS session.")
+def mcp_mss_end_debug(summary: str | None = None) -> dict[str, Any]:
+    """MCP wrapper for mss.end_debug."""
+    return call_tool("mss.end_debug", summary=summary)
 
 
 def main() -> None:

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from mss.parsers.markdown import parse_package_markdown
+from mss.rules.loader import RulesLoadException, load_rules_payload
 from mss.storage.plan_cache import load_plan_cache, save_plan_cache_atomic
 from mss.storage.state import create_initial_state, load_state, save_state_atomic
 
@@ -35,7 +36,7 @@ def store(plan: dict[str, Any], plan_dir: str, config: dict[str, Any] | None = N
     plan_cache = plan_cache_result["plan_cache"]
     plan_cache["created_at"] = _now_iso()
     plan_cache["source_format"] = "json"
-    plan_cache["rules_hash"] = _default_rules_hash(resolved_plan_dir)
+    plan_cache["rules_hash"] = _default_rules_hash()
     plan_cache["plan_hash"] = _sha256_for_text(json.dumps(plan, ensure_ascii=False, sort_keys=True))
 
     save_plan_cache_atomic(resolved_plan_dir, plan_cache)
@@ -277,7 +278,7 @@ def _build_plan_cache(plan_id: str, plan_path: Path, plan_dir: Path) -> dict[str
         return _error_response("NO_STAGES_FOUND", "No stages detected in PACKAGE markdown files")
 
     plan_name = _extract_plan_name(plan_markdown)
-    rules_hash = _default_rules_hash(plan_dir)
+    rules_hash = _default_rules_hash()
     plan_hash = _sha256_for_text(plan_markdown)
 
     plan_cache = {
@@ -495,16 +496,14 @@ def _package_sort_key(package_path: Path) -> tuple[int, str]:
     return (package_number, package_path.stem)
 
 
-def _default_rules_hash(plan_dir: Path) -> str:
-    project_rules_path = plan_dir / "rules.json"
-    if project_rules_path.exists():
-        return _sha256_for_text(project_rules_path.read_text(encoding="utf-8"))
+def _default_rules_hash() -> str:
+    try:
+        package_generation_rules = load_rules_payload("package_generation")
+    except RulesLoadException:
+        return _sha256_for_text("")
 
-    default_rules_path = Path(__file__).resolve().parents[2] / "data" / "rules.json"
-    if default_rules_path.exists():
-        return _sha256_for_text(default_rules_path.read_text(encoding="utf-8"))
-
-    return _sha256_for_text("")
+    normalized_rules_json = json.dumps(package_generation_rules, ensure_ascii=False, sort_keys=True)
+    return _sha256_for_text(normalized_rules_json)
 
 
 def _resolve_max_retries(config: dict[str, Any] | None) -> int:

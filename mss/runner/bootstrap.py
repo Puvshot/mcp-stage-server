@@ -14,9 +14,11 @@ def bootstrap_tool_registry() -> dict[str, ToolCallable]:
     exec_bundle_module = _import_tool_module("exec_bundle")
     execution_log_module = _import_tool_module("execution_log")
     guard_module = _import_tool_module("guard")
+    mss_artifacts_module = _import_tool_module("mss_artifacts")
     plan_module = _import_tool_module("plan")
     rules_module = _import_tool_module("rules")
     rules_convert_module = _import_tool_module("rules_convert")
+    session_module = _import_tool_module("session")
     stage_module = _import_tool_module("stage")
     test_report_module = _import_tool_module("test_report")
 
@@ -36,6 +38,23 @@ def bootstrap_tool_registry() -> dict[str, ToolCallable]:
         "rules.version": rules_module.version,
         "rules.directive_pack": rules_module.directive_pack,
         "rules.convert_md_to_json": rules_convert_module.convert_md_to_json,
+        "mss.connect": session_module.connect,
+        "mss.status": session_module.status,
+        "mss.set_mode": session_module.set_mode,
+        "mss.capabilities": mss_artifacts_module.capabilities,
+        "mss.list_artifacts": mss_artifacts_module.list_artifacts,
+        "mss.get_artifact": mss_artifacts_module.get_artifact,
+        "mss.workout": mss_artifacts_module.workout,
+        "mss.end_workout": mss_artifacts_module.end_workout,
+        "mss.summarize": mss_artifacts_module.summarize,
+        "mss.summarize_details": mss_artifacts_module.summarize_details,
+        "mss.audit": mss_artifacts_module.audit,
+        "mss.prepare": mss_artifacts_module.prepare,
+        "mss.planning": mss_artifacts_module.planning,
+        "mss.package": mss_artifacts_module.package,
+        "mss.run": mss_artifacts_module.run,
+        "mss.debug": mss_artifacts_module.debug,
+        "mss.end_debug": mss_artifacts_module.end_debug,
         "exec.directive_bundle": exec_bundle_module.directive_bundle,
         "collision.analyze": collision_module.analyze,
         "execution_log.append": execution_log_module.append,

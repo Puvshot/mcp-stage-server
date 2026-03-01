@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,11 @@ def get_full(plan_dir: str) -> dict[str, Any]:
 
     This read-only tool is idempotent.
     """
+    if not os.getenv("MCP_DEBUG_VERBOSE"):
+        return _error_response(
+            "FORBIDDEN_VERBOSE_MODE",
+            "rules.get_full requires MCP_DEBUG_VERBOSE=1",
+        )
     Path(plan_dir).resolve()
     try:
         all_rules_payloads = runner_load_all_required_rules_payloads()

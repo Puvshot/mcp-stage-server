@@ -68,6 +68,7 @@ def directive_bundle(plan_dir: str, stage_id: str, char_limit: int = DEFAULT_PRO
         "directive_bundle": {
             "package_id": str(package_snapshot.get("package_id", "PACKAGE_UNKNOWN")),
             "stage_id": stage_id,
+            "plan_hash": str(plan_cache.get("plan_hash", "")),
             "prompt_text": prompt_build_result["prompt_text"],
             "RULESET_HASH": ruleset_hash,
             "used_rule_identifiers": used_rule_identifiers,

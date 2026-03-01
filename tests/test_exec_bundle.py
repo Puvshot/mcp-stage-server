@@ -8,6 +8,16 @@ from mss.rules.loader import load_rules_payload
 from mss.tools.exec_bundle import directive_bundle
 
 
+def test_directive_bundle_contains_plan_hash(tmp_path: Path) -> None:
+    _write_plan_cache_fixture(tmp_path)
+
+    response_payload = directive_bundle(str(tmp_path), "PACKAGE_5_STAGE_1", char_limit=12000)
+
+    bundle_payload = response_payload["directive_bundle"]
+    assert "plan_hash" in bundle_payload
+    assert isinstance(bundle_payload["plan_hash"], str)
+
+
 def test_exec_directive_bundle_returns_contract_fields_and_identifiers(tmp_path: Path) -> None:
     _write_plan_cache_fixture(tmp_path)
 
@@ -34,6 +44,18 @@ def test_exec_directive_bundle_returns_contract_fields_and_identifiers(tmp_path:
     assert used_identifiers["always"]["must_not"]
     assert any(identifier.startswith("action_directives.READ") for identifier in used_identifiers["action_directives"])
     assert any(identifier.startswith("action_directives.TEST") for identifier in used_identifiers["action_directives"])
+
+
+def test_directive_bundle_has_no_leak_fields(tmp_path: Path) -> None:
+    _write_plan_cache_fixture(tmp_path)
+
+    response_payload = directive_bundle(str(tmp_path), "PACKAGE_5_STAGE_1", char_limit=12000)
+
+    bundle_payload = response_payload["directive_bundle"]
+    forbidden_keys = {"plan", "package", "rules_full", "markdown"}
+
+    assert forbidden_keys.isdisjoint(set(response_payload.keys()))
+    assert forbidden_keys.isdisjoint(set(bundle_payload.keys()))
 
 
 def test_exec_directive_bundle_trimming_is_deterministic_and_keeps_non_trimmable_sections(tmp_path: Path) -> None:
