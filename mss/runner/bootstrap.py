@@ -41,6 +41,7 @@ def bootstrap_tool_registry() -> dict[str, ToolCallable]:
         "mss.connect": session_module.connect,
         "mss.status": session_module.status,
         "mss.set_mode": session_module.set_mode,
+        "mss.new_session": session_module.new_session,  # Fix G
         "mss.capabilities": mss_artifacts_module.capabilities,
         "mss.list_artifacts": mss_artifacts_module.list_artifacts,
         "mss.get_artifact": mss_artifacts_module.get_artifact,

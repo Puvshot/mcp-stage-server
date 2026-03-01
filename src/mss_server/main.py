@@ -254,9 +254,9 @@ def mcp_mss_status() -> dict[str, Any]:
 
 
 @app.tool(name="mss_set_mode", description="Set active MSS session mode.")
-def mcp_mss_set_mode(mode: str) -> dict[str, Any]:
+def mcp_mss_set_mode(mode: str, project_name: str | None = None) -> dict[str, Any]:
     """MCP wrapper for mss.set_mode."""
-    return call_tool("mss.set_mode", mode=mode)
+    return call_tool("mss.set_mode", mode=mode, project_name=project_name)
 
 
 @app.tool(name="mss_capabilities", description="Return MSS artifact capabilities for active session.")
@@ -290,9 +290,15 @@ def mcp_mss_end_workout(summary: str | None = None) -> dict[str, Any]:
 
 
 @app.tool(name="mss_summarize", description="Persist summarize artifact for active MSS session.")
-def mcp_mss_summarize(summary: str | None = None) -> dict[str, Any]:
+def mcp_mss_summarize(summary: str | None = None, files_affected: list[str] | None = None) -> dict[str, Any]:
     """MCP wrapper for mss.summarize."""
-    return call_tool("mss.summarize", summary=summary)
+    return call_tool("mss.summarize", summary=summary, files_affected=files_affected)
+
+
+@app.tool(name="mss_new_session", description="Create a new MSS session, archiving the current one.")
+def mcp_mss_new_session() -> dict[str, Any]:
+    """MCP wrapper for mss.new_session."""
+    return call_tool("mss.new_session")
 
 
 @app.tool(name="mss_summarize_details", description="Persist summarize_details artifact for active MSS session.")

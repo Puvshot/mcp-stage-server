@@ -108,4 +108,9 @@ def _normalize_session_payload(session_payload: dict[str, Any]) -> dict[str, Any
         normalized_session["artifacts"] = []
     else:
         normalized_session["artifacts"] = deepcopy(raw_artifacts)
+
+    # Fix A: normalizacja project_name
+    raw_project_name = normalized_session.get("project_name")
+    normalized_session["project_name"] = str(raw_project_name).strip() if raw_project_name else None
+
     return normalized_session

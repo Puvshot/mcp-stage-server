@@ -161,8 +161,8 @@ dokładny opis zmian
         "planning",
         "prepare",
         "run",
-        "summarize",
         "summarize_details",
+        "summary",  # Fix C: zmiana nazwy artefaktu (summary > summarize_details alfabetycznie)
         "workout",
     ]
 
@@ -198,7 +198,7 @@ def test_workout_mode_blocks_critical_tools_until_summarize_details_pass(tmp_pat
     connect_payload = connect()
     assert connect_payload["ok"] is True
 
-    assert mcp_mss_set_mode(mode="workout")["ok"] is True
+    assert mcp_mss_set_mode(mode="workout", project_name="TestProject")["ok"] is True
 
     blocked_payload = mcp_mss_audit(summary="audit")
     assert blocked_payload["ok"] is False
@@ -291,8 +291,86 @@ def test_status_matches_gate_priority_for_debug_and_workout_modes(tmp_path: Path
         {"command": "mss.summarize_details", "description": "Uzupełnij summarize_details i doprowadź do PASS"}
     ]
 
-    assert mcp_mss_set_mode(mode="workout")["ok"] is True
+    assert mcp_mss_set_mode(mode="workout", project_name="TestProject")["ok"] is True
     workout_status_payload = mcp_mss_status()
     assert workout_status_payload["next_actions"] == [
+        {
+            "command": "mss.workout",
+            "description": "Rozpocznij sesję workout (notatki / burza mózgów)",
+        }
+    ]
+
+    assert mcp_mss_workout(note="brainstorm")["ok"] is True
+    workout_status_after_note_payload = mcp_mss_status()
+    assert workout_status_after_note_payload["next_actions"] == [
+        {"command": "mss.end_workout", "description": "Zamknij sesję workout"}
+    ]
+
+    assert mcp_mss_end_workout(summary="done")["ok"] is True
+    workout_status_after_end_payload = mcp_mss_status()
+    assert workout_status_after_end_payload["next_actions"] == [
+        {"command": "mss.summarize", "description": "Podsumuj sesję"}
+    ]
+
+    assert (
+        mcp_mss_summarize(
+            summary="""
+FILES AFFECTED
+- `mss/tools/mss_artifacts.py`
+""".strip()
+        )["ok"]
+        is True
+    )
+    workout_status_after_summarize_payload = mcp_mss_status()
+    assert workout_status_after_summarize_payload["next_actions"] == [
         {"command": "mss.summarize_details", "description": "Uzupełnij summarize_details i doprowadź do PASS"}
     ]
+
+    assert (
+        mcp_mss_summarize_details(
+            details="""
+### mss/tools/mss_artifacts.py
+opis zmian
+""".strip()
+        )["ok"]
+        is True
+    )
+    workout_status_after_pass_payload = mcp_mss_status()
+    assert workout_status_after_pass_payload["next_actions"] == [
+        {"command": "mss.planning", "description": "Przejdź do planowania"}
+    ]
+
+
+def test_summarize_returns_message_and_artifact_named_summary(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("MSS_SESSION_DIR", str(tmp_path))
+    connect()
+    mcp_mss_workout(note="notatka")
+    mcp_mss_end_workout(summary="done")
+
+    result = mcp_mss_summarize(summary="CEL: test. FILES AFFECTED\n- `a.py`")
+    assert result["ok"] is True
+    assert "message" in result
+    assert result["message"]  # nie puste
+    assert result["artifact"]["name"] == "summary"  # Fix C
+
+
+def test_summarize_files_affected_param_passes_validation(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("MSS_SESSION_DIR", str(tmp_path))
+    connect()
+    mcp_mss_workout(note="notatka")
+    mcp_mss_end_workout(summary="done")
+
+    # Fix D: files_affected jako lista zamiast tekstu
+    summarize_payload = mcp_mss_summarize(
+        summary="CEL: test",
+        files_affected=["mss/tools/mss_artifacts.py"],
+    )
+    assert summarize_payload["ok"] is True
+
+    details_payload = mcp_mss_summarize_details(
+        details="""
+### mss/tools/mss_artifacts.py
+wprowadzone zmiany
+""".strip()
+    )
+    assert details_payload["ok"] is True

@@ -29,6 +29,7 @@ ALLOWED_MODES = {"audit", "planning", "debug", "workout", "run"}
 SESSION_DIR_ENV = "MSS_SESSION_DIR"
 PROJECTS_DIR_ENV = "MSS_PROJECTS_DIR"
 
+# Fix A: message hint o project_name dodany na końcu
 _CONNECT_MESSAGE = (
     "Połączono. Wyświetl użytkownikowi DOKŁADNIE ten tekst: "
     "'Cześć, jaką operację chcesz wykonać?\\n\\nDostępne funkcje:\\n"
@@ -36,7 +37,8 @@ _CONNECT_MESSAGE = (
     "pliki, postawię hipotezę i naprawię usterkę krok po kroku)\\n"
     "- **Workout** (Burza mózgów i planowanie. Porozmawiajmy o architekturze, "
     "rozważmy opcje i zapisujmy ustalenia na bieżąco, bez pisania kodu na ślepo)\\n\\n"
-    "Wybór trybu: wpisz `debug` lub `workout` (skróty), albo `mode debug` / `mode workout`.'"
+    "Wybór trybu: wpisz `debug` lub `workout` (skróty), albo `mode debug` / `mode workout`.\\n\\n"
+    "Wybierając tryb pamiętaj żeby podać nazwę projektu.'"
 )
 
 
@@ -50,6 +52,7 @@ def connect() -> dict[str, Any]:
 
     active_session = get_active_session(session_dir=session_dir)
     if active_session is None:
+        # Fix A: project_name: None w nowej sesji
         created_session_payload = create_session(
             session_dir=session_dir,
             session_payload={
@@ -57,6 +60,7 @@ def connect() -> dict[str, Any]:
                 "created_at": _now_iso(),
                 "mode": None,
                 "artifacts": [],
+                "project_name": None,
             },
         )
         set_active_session(session_dir=session_dir, session_id=str(created_session_payload["session_id"]))
@@ -68,6 +72,7 @@ def connect() -> dict[str, Any]:
         ok=True,
         session_id=str(active_session.get("session_id", "")),
         mode=_normalize_mode(active_session.get("mode")),
+        project_name=active_session.get("project_name"),
         message=compose_projects_message(base_message=_CONNECT_MESSAGE, project_summaries=project_summaries),
         artifacts=_normalize_artifacts(active_session.get("artifacts")),
         next_actions=merge_next_actions(_action_connect(), project_next_actions(project_summaries)),
@@ -87,6 +92,7 @@ def status() -> dict[str, Any]:
             ok=False,
             session_id=None,
             mode=None,
+            project_name=None,
             message="Brak aktywnej sesji. Uruchom `mss.connect`.",
             artifacts=[],
             next_actions=[_action("connect", "Połącz z MSS")],
@@ -95,6 +101,7 @@ def status() -> dict[str, Any]:
 
     session_id = str(active_session.get("session_id", "")).strip()
     mode = _normalize_mode(active_session.get("mode"))
+    project_name = active_session.get("project_name")
     artifacts = _normalize_artifacts(active_session.get("artifacts"))
     artifact_names = {str(item.get("name", "")) for item in artifacts if isinstance(item, dict)}
     summarize_details_artifact = None
@@ -120,7 +127,10 @@ def status() -> dict[str, Any]:
     if include_project_resume_hints:
         next_actions = merge_next_actions(session_actions, project_next_actions(project_summaries))
 
-    message_text = "Status sesji pobrany."
+    # Fix B: dynamiczny message z trybem i listą artefaktów
+    artifact_list = ", ".join(a["name"] for a in artifacts) if artifacts else "brak"
+    mode_label = mode if mode else "nie ustawiono"
+    message_text = f"Stan sesji: tryb {mode_label}. Artefakty ({len(artifacts)}): {artifact_list}."
     if include_project_resume_hints:
         message_text = compose_projects_message(base_message=message_text, project_summaries=project_summaries)
 
@@ -128,6 +138,7 @@ def status() -> dict[str, Any]:
         ok=True,
         session_id=session_id,
         mode=mode,
+        project_name=project_name,
         message=message_text,
         artifacts=artifacts,
         next_actions=next_actions,
@@ -135,16 +146,18 @@ def status() -> dict[str, Any]:
     )
 
 
-def set_mode(mode: str) -> dict[str, Any]:
+def set_mode(mode: str, project_name: str | None = None) -> dict[str, Any]:
     """Set active session mode and return deterministic mode-specific next actions.
 
-    This tool is idempotent for repeated calls with the same mode.
+    For mode='workout', project_name is required. If not provided, returns an error.
+    This tool is idempotent for repeated calls with the same mode and project_name.
     """
     if not isinstance(mode, str):
         return _response(
             ok=False,
             session_id=None,
             mode=None,
+            project_name=None,
             message="Nieprawidłowy parametr `mode`.",
             artifacts=[],
             next_actions=[_action("status", "Sprawdź aktualny stan")],
@@ -157,6 +170,7 @@ def set_mode(mode: str) -> dict[str, Any]:
             ok=False,
             session_id=None,
             mode=None,
+            project_name=None,
             message="Nieobsługiwany tryb. Dozwolone: audit, planning, debug, workout, run.",
             artifacts=[],
             next_actions=[_action("status", "Sprawdź aktualny stan")],
@@ -170,11 +184,28 @@ def set_mode(mode: str) -> dict[str, Any]:
             ok=False,
             session_id=None,
             mode=None,
+            project_name=None,
             message="Brak aktywnej sesji. Uruchom `mss.connect`.",
             artifacts=[],
             next_actions=[_action("connect", "Połącz z MSS")],
             warnings=["active_session_not_found"],
         )
+
+    # Fix G: project_name wymagany dla trybu workout
+    if normalized_mode == "workout":
+        normalized_project_name = str(project_name).strip() if project_name else ""
+        if not normalized_project_name:
+            return _response(
+                ok=False,
+                session_id=None,
+                mode=None,
+                project_name=None,
+                message="Podaj nazwę projektu (project_name) przed rozpoczęciem workout.",
+                artifacts=[],
+                next_actions=[_action("status", "Sprawdź aktualny stan")],
+                warnings=["project_name_required_for_workout"],
+            )
+        active_session["project_name"] = normalized_project_name
 
     active_session["mode"] = normalized_mode
     save_session(session_dir=session_dir, session_payload=active_session)
@@ -184,9 +215,45 @@ def set_mode(mode: str) -> dict[str, Any]:
         ok=True,
         session_id=str(active_session.get("session_id", "")),
         mode=normalized_mode,
+        project_name=active_session.get("project_name"),
         message=f"Ustawiono tryb: {normalized_mode}.",
         artifacts=artifacts,
         next_actions=next_actions_for_set_mode(normalized_mode),
+        warnings=[],
+    )
+
+
+def new_session() -> dict[str, Any]:
+    """Create a new MSS session and set it as active, archiving the current one.
+
+    The previous session is preserved on disk but is no longer active.
+    project_name is set later via set_mode workout.
+    This tool is idempotent — always returns the newly created session.
+    """
+    session_dir = _session_dir()
+    session_dir.mkdir(parents=True, exist_ok=True)
+    created = create_session(
+        session_dir=session_dir,
+        session_payload={
+            "session_id": str(uuid4()),
+            "created_at": _now_iso(),
+            "mode": None,
+            "artifacts": [],
+            "project_name": None,
+        },
+    )
+    set_active_session(session_dir=session_dir, session_id=str(created["session_id"]))
+    return _response(
+        ok=True,
+        session_id=str(created["session_id"]),
+        mode=None,
+        project_name=None,
+        message="Nowa sesja utworzona. Poprzednia sesja zachowana, nie jest już aktywna.",
+        artifacts=[],
+        next_actions=[
+            _action("mode debug", "Uruchamia tryb debug"),
+            _action("mode workout", "Uruchamia tryb workout"),
+        ],
         warnings=[],
     )
 
@@ -211,6 +278,7 @@ def _response(
     ok: bool,
     session_id: str | None,
     mode: str | None,
+    project_name: str | None,
     message: str,
     artifacts: list[dict[str, Any]],
     next_actions: list[dict[str, str]],
@@ -220,6 +288,7 @@ def _response(
         "ok": bool(ok),
         "session_id": session_id,
         "mode": mode,
+        "project_name": project_name,
         "message": message,
         "artifacts": artifacts,
         "next_actions": next_actions,
@@ -228,9 +297,9 @@ def _response(
 
 
 def _session_dir() -> Path:
-    env_path = Path(str(Path.cwd() / "data" / "sessions"))
     from os import getenv
-
+    # Fix E: kotwicza ścieżkę do repo root, nie do CWD procesu
+    env_path = Path(__file__).resolve().parents[2] / "data" / "sessions"
     raw_override = getenv(SESSION_DIR_ENV)
     if raw_override:
         env_path = Path(raw_override)
@@ -238,9 +307,8 @@ def _session_dir() -> Path:
 
 
 def _projects_dir() -> Path:
-    projects_path = Path.cwd() / "data" / "projects"
     from os import getenv
-
+    projects_path = Path(__file__).resolve().parents[2] / "data" / "projects"
     raw_override = getenv(PROJECTS_DIR_ENV)
     if raw_override:
         projects_path = Path(raw_override)

@@ -71,16 +71,44 @@ def end_workout(summary: str | None = None) -> dict[str, Any]:
     )
 
 
-def summarize(summary: str | None = None) -> dict[str, Any]:
-    """Persist summarize artifact and return summary metadata."""
-    return _save_named_artifact(
-        artifact_name="summarize",
-        payload={"summary": _normalize_optional_text(summary)},
-        next_actions=[
+def summarize(summary: str | None = None, files_affected: list[str] | None = None) -> dict[str, Any]:
+    """Persist summary artifact and return summary metadata.
+
+    files_affected: optional explicit list of file paths. When provided, the system
+    stores them as a structured field and appends them as FILES AFFECTED section for
+    the summarize_details validator. Avoids manual text formatting by the agent.
+    """
+    active_session = _active_session()
+    if active_session is None:
+        return _missing_session_response()
+    session_id = str(active_session.get("session_id", "")).strip()
+    # Fix D: ustrukturyzowana lista plików zapisywana w payload
+    normalized_files: list[str] = [str(f).strip() for f in files_affected if str(f).strip()] if files_affected else []
+    saved_artifact = storage_save_artifact(
+        session_dir=_session_dir(),
+        session_id=session_id,
+        artifact_name="summary",  # Fix C: zmiana nazwy artefaktu
+        artifact_payload={
+            "summary": _normalize_optional_text(summary),
+            "files_affected": normalized_files,
+        },
+    )
+    if saved_artifact is None:
+        return _artifact_save_failed_response()
+    return {
+        "ok": True,
+        "artifact": saved_artifact,
+        "next_actions": [
             _action("mss.summarize_details", "Uzupełnij szczegóły per plik"),
             _action("mss.list_artifacts", "Wyświetl artefakty sesji"),
         ],
-    )
+        "warnings": [],
+        # Fix C: wymagane pole message
+        "message": (
+            "Kontrakt projektu (SUMMARY) zapisany. Opisuje cel, zakres i ograniczenia. "
+            "Następnie uzupełnij szczegóły per plik przez mss.summarize_details."
+        ),
+    }
 
 
 def summarize_details(details: str | None = None) -> dict[str, Any]:
@@ -95,7 +123,7 @@ def summarize_details(details: str | None = None) -> dict[str, Any]:
     summarize_artifact = storage_get_artifact(
         session_dir=_session_dir(),
         session_id=session_id,
-        artifact_name="summarize",
+        artifact_name="summary",  # Fix C: zmiana nazwy artefaktu
     )
     coverage_payload = build_coverage_validation(
         summary_text=extract_summary_text(summarize_artifact),
@@ -175,7 +203,7 @@ def planning(plan_outline: str | None = None) -> dict[str, Any]:
     summarize_artifact = storage_get_artifact(
         session_dir=_session_dir(),
         session_id=session_id,
-        artifact_name="summarize",
+        artifact_name="summary",  # Fix C: zmiana nazwy artefaktu
     )
     summarize_details_artifact = storage_get_artifact(
         session_dir=_session_dir(),
@@ -350,8 +378,8 @@ def _collect_flow_state(session_id: str) -> dict[str, Any]:
 
 def _session_dir() -> Path:
     from os import getenv
-
-    session_dir = Path.cwd() / "data" / "sessions"
+    # Fix E: kotwicza ścieżkę do repo root, nie do CWD procesu
+    session_dir = Path(__file__).resolve().parents[2] / "data" / "sessions"
     raw_override = getenv(SESSION_DIR_ENV)
     if raw_override:
         session_dir = Path(raw_override)

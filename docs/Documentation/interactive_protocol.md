@@ -61,6 +61,7 @@ Dozwolone wartości trybu: `audit`, `planning`, `debug`, `workout`, `run`
 - `status` — Sprawdź stan sesji
 
 **Po ustawieniu trybu `workout`, serwer sugeruje:**
+- `mss.workout` — Rozpocznij sesję workout (notatki / burza mózgów)
 - `status` — Sprawdź stan sesji
 
 **Po ustawieniu trybu `planning`, serwer sugeruje:**
@@ -75,6 +76,11 @@ Dozwolone wartości trybu: `audit`, `planning`, `debug`, `workout`, `run`
 ---
 
 ## 3. Ścieżka: Workout (burza mózgów)
+
+`mss_status` w trybie `workout` prowadzi deterministycznie przez kroki:
+`mss.workout` → `mss.end_workout` → `mss.summarize` → `mss.summarize_details` → `mss.planning`.
+
+`mss.summarize_details` ma sens dopiero po `mss.summarize`, ponieważ waliduje pokrycie sekcji `FILES AFFECTED`.
 
 ### Krok 3.1: Zapis notatek z sesji pracy
 Agent wywołuje: `mss_workout(note="...")`
@@ -253,7 +259,11 @@ Serwer analizuje aktualny tryb i artefakty sesji i zwraca kontekstowe `next_acti
 - Tryb `planning` z preplanem → `plan`
 - Tryb `debug` bez `end_debug` → `mss.end_debug` (najwyższy priorytet)
 - Tryb `debug` z `end_debug`, ale bez PASS w `summarize_details` → `mss.summarize_details`
-- Tryb `workout` bez PASS w `summarize_details` → `mss.summarize_details`
+- Tryb `workout` bez `workout` → `mss.workout`
+- Tryb `workout` z `workout`, ale bez `end_workout` → `mss.end_workout`
+- Tryb `workout` z `end_workout`, ale bez `summarize` → `mss.summarize`
+- Tryb `workout` z `summarize`, ale bez PASS w `summarize_details` → `mss.summarize_details`
+- Tryb `workout` z PASS w `summarize_details` → `mss.planning`
 
 ### Priorytet akcji statusowych vs podpowiedzi projektowe
 - Dla `mode=debug` i `mode=workout` `mss_status` zwraca **jedną akcję sesyjną** wynikającą z gate (blokada end-to-end).

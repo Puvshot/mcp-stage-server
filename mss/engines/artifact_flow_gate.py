@@ -126,7 +126,8 @@ def build_coverage_validation(summary_text: str, details_text: str) -> dict[str,
     files_affected = extract_files_affected(summary_text)
     covered_paths = extract_details_coverage(details_text)
     missing_paths = validate_details_against_files(files_affected, covered_paths)
-    validation_passed = len(files_affected) > 0 and len(missing_paths) == 0
+    # Fix F: pusta lista plików = flow koncepcyjny, przepuszcza bez pokrycia
+    validation_passed = len(missing_paths) == 0
 
     return {
         "passed": validation_passed,
@@ -140,15 +141,24 @@ def build_coverage_validation(summary_text: str, details_text: str) -> dict[str,
 
 
 def extract_summary_text(summarize_artifact: dict[str, Any] | None) -> str:
-    """Extract summary text from summarize artifact payload."""
+    """Extract summary text from summary artifact payload.
+
+    Fix D: auto-dołącza files_affected z payload jako sekcję FILES AFFECTED
+    dla walidatora summarize_details. Agent nie musi ręcznie formatować tekstu.
+    """
     if not isinstance(summarize_artifact, dict):
         return ""
     payload = summarize_artifact.get("payload")
     if not isinstance(payload, dict):
         return ""
-    summary_text = payload.get("summary")
+    summary_text = payload.get("summary") or ""
     if not isinstance(summary_text, str):
-        return ""
+        summary_text = ""
+    # Auto-append structured files_affected list as FILES AFFECTED section
+    files_affected = payload.get("files_affected")
+    if isinstance(files_affected, list) and files_affected:
+        files_lines = "\n".join(f"- `{f}`" for f in files_affected if f)
+        summary_text = f"{summary_text}\n\nFILES AFFECTED\n{files_lines}"
     return summary_text
 
 

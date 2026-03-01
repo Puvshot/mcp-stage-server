@@ -121,6 +121,17 @@ def test_set_mode_persists_and_returns_deterministic_actions(tmp_path: Path, mon
     status_payload = status()
     assert status_payload["mode"] == "run"
 
+    workout_payload = set_mode(mode="workout", project_name="TestProject")
+    assert workout_payload["ok"] is True
+    assert workout_payload["mode"] == "workout"
+    assert workout_payload["next_actions"] == [
+        {
+            "command": "mss.workout",
+            "description": "Rozpocznij sesję workout (notatki / burza mózgów)",
+        },
+        {"command": "status", "description": "Sprawdź stan sesji"},
+    ]
+
 
 def test_set_mode_returns_error_for_invalid_mode(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("MSS_SESSION_DIR", str(tmp_path))
@@ -143,7 +154,7 @@ def test_mcp_wrappers_call_session_tools(tmp_path: Path, monkeypatch) -> None:
     connect_payload = mcp_mss_connect()
     assert connect_payload["ok"] is True
 
-    set_mode_payload = mcp_mss_set_mode(mode="workout")
+    set_mode_payload = mcp_mss_set_mode(mode="workout", project_name="TestProject")
     assert set_mode_payload["ok"] is True
     assert set_mode_payload["mode"] == "workout"
 
@@ -224,7 +235,7 @@ def test_status_includes_projects_actions_alongside_mode_actions(tmp_path: Path,
     payload = status()
     assert payload["ok"] is True
     assert payload["mode"] == "audit"
-    assert "Status sesji pobrany." in payload["message"]
+    assert "Stan sesji:" in payload["message"]  # Fix B: dynamiczny message
     assert "delta [running, cursor=package:0 stage:1]" in payload["message"]
 
     next_commands = [entry["command"] for entry in payload["next_actions"]]
@@ -249,14 +260,17 @@ def test_status_prioritizes_workout_gate_and_hides_project_hints(tmp_path: Path,
     )
 
     connect()
-    set_mode(mode="workout")
+    set_mode(mode="workout", project_name="TestProject")
 
     payload = status()
     assert payload["ok"] is True
     assert payload["mode"] == "workout"
-    assert payload["message"] == "Status sesji pobrany."
+    assert "Stan sesji:" in payload["message"]  # Fix B: dynamiczny message
     assert payload["next_actions"] == [
-        {"command": "mss.summarize_details", "description": "Uzupełnij summarize_details i doprowadź do PASS"}
+        {
+            "command": "mss.workout",
+            "description": "Rozpocznij sesję workout (notatki / burza mózgów)",
+        }
     ]
 
 
@@ -341,3 +355,37 @@ def _create_project_runtime(
         json.dumps(state_payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+
+
+def test_set_mode_workout_requires_project_name(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("MSS_SESSION_DIR", str(tmp_path))
+    connect()
+
+    # bez project_name — powinno zwrócić błąd
+    response = set_mode(mode="workout")
+    assert response["ok"] is False
+    assert "project_name_required_for_workout" in response["warnings"]
+
+    # z project_name — sukces
+    response = set_mode(mode="workout", project_name="Projekt Alpha")
+    assert response["ok"] is True
+    assert response["mode"] == "workout"
+    assert response["project_name"] == "Projekt Alpha"
+
+
+def test_new_session_creates_fresh_session_and_archives_previous(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("MSS_SESSION_DIR", str(tmp_path))
+    first_payload = connect()
+    first_session_id = first_payload["session_id"]
+    assert first_payload["ok"] is True
+
+    new_payload = TOOL_REGISTRY["mss.new_session"]()
+    assert new_payload["ok"] is True
+    assert new_payload["session_id"] != first_session_id
+    assert new_payload["mode"] is None
+    assert new_payload["project_name"] is None
+    assert new_payload["artifacts"] == []
+
+    # status powinien zwrócić nową sesję
+    status_payload = status()
+    assert status_payload["session_id"] == new_payload["session_id"]

@@ -1,5 +1,5 @@
 ---
-date: "YYYY-MM-DD"
+date: "YYYY-MM-DDTHH:MM:SS"
 task: "Krótka_nazwa_zadania_bez_spacji"
 status: "completed | partial_rollback | blocked"
 ---
