@@ -283,13 +283,13 @@ def mcp_mss_workout(note: str | None = None) -> dict[str, Any]:
     return call_tool("mss.workout", note=note)
 
 
-@app.tool(name="mss_end_workout", description="Persist end_workout artifact for active MSS session.")
+@app.tool(name="mss_end_workout", description="Persist end_workout artifact. REQUIRED: ask user 'Chcesz coś dopracować, czy zapisujemy podsumowanie?' before calling mss_summarize.")
 def mcp_mss_end_workout(summary: str | None = None) -> dict[str, Any]:
     """MCP wrapper for mss.end_workout."""
     return call_tool("mss.end_workout", summary=summary)
 
 
-@app.tool(name="mss_summarize", description="Persist summarize artifact for active MSS session.")
+@app.tool(name="mss_summarize", description="Persist summarize artifact. REQUIRED: call mss_summarize_details immediately after — no code changes until PASS.")
 def mcp_mss_summarize(summary: str | None = None, files_affected: list[str] | None = None) -> dict[str, Any]:
     """MCP wrapper for mss.summarize."""
     return call_tool("mss.summarize", summary=summary, files_affected=files_affected)
@@ -343,7 +343,7 @@ def mcp_mss_debug(findings: str | None = None) -> dict[str, Any]:
     return call_tool("mss.debug", findings=findings)
 
 
-@app.tool(name="mss_end_debug", description="Persist end_debug artifact for active MSS session.")
+@app.tool(name="mss_end_debug", description="Persist end_debug artifact. REQUIRED: ask user 'Chcesz coś dopracować, czy zapisujemy podsumowanie?' before calling mss_summarize.")
 def mcp_mss_end_debug(summary: str | None = None) -> dict[str, Any]:
     """MCP wrapper for mss.end_debug."""
     return call_tool("mss.end_debug", summary=summary)

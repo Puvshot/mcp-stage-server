@@ -8,6 +8,8 @@ from typing import Any
 
 
 ACTIVE_SESSION_FILENAME = "active.json"
+SESSION_FILENAME = "session.json"
+PENDING_SUBDIR = "_pending"
 
 
 def create_session(
@@ -24,21 +26,16 @@ def create_session(
     return deepcopy(normalized_session)
 
 
-def load_session(session_dir: str | Path, session_id: str) -> dict[str, Any] | None:
-    """Load one session payload by identifier."""
-    normalized_session_id = str(session_id).strip()
-    if not normalized_session_id:
-        return None
-    return _read_json(_session_path(session_dir, normalized_session_id))
+def load_session(session_dir: str | Path, project_name: str | None = None) -> dict[str, Any] | None:
+    """Load session payload from the resolved subdirectory."""
+    return _read_json(_session_path(session_dir, project_name))
 
 
 def save_session(session_dir: str | Path, session_payload: dict[str, Any]) -> None:
     """Persist one session payload atomically."""
     normalized_session = _normalize_session_payload(session_payload)
-    session_id = str(normalized_session.get("session_id", "")).strip()
-    if not session_id:
-        return
-    _write_json_atomic(_session_path(session_dir, session_id), normalized_session)
+    project_name = normalized_session.get("project_name")
+    _write_json_atomic(_session_path(session_dir, project_name), normalized_session)
 
 
 def get_active_session(session_dir: str | Path) -> dict[str, Any] | None:
@@ -47,26 +44,39 @@ def get_active_session(session_dir: str | Path) -> dict[str, Any] | None:
     if not isinstance(active_payload, dict):
         return None
 
-    active_session_id = str(active_payload.get("session_id", "")).strip()
-    if not active_session_id:
-        return None
-    return load_session(session_dir=session_dir, session_id=active_session_id)
+    project_name = active_payload.get("project_name") or None
+    return load_session(session_dir=session_dir, project_name=project_name)
 
 
-def set_active_session(session_dir: str | Path, session_id: str) -> None:
-    """Set active session identifier pointer atomically."""
+def set_active_session(
+    session_dir: str | Path,
+    session_id: str,
+    project_name: str | None = None,
+) -> None:
+    """Set active session pointer atomically, including optional project_name."""
     normalized_session_id = str(session_id).strip()
     if not normalized_session_id:
         return
-    _write_json_atomic(_active_session_path(session_dir), {"session_id": normalized_session_id})
+    payload: dict[str, Any] = {"session_id": normalized_session_id}
+    if project_name:
+        payload["project_name"] = str(project_name).strip()
+    _write_json_atomic(_active_session_path(session_dir), payload)
 
 
 def _active_session_path(session_dir: str | Path) -> Path:
     return _session_dir_path(session_dir) / ACTIVE_SESSION_FILENAME
 
 
-def _session_path(session_dir: str | Path, session_id: str) -> Path:
-    return _session_dir_path(session_dir) / f"{session_id}.json"
+def _session_path(session_dir: str | Path, project_name: str | None) -> Path:
+    subdir = _resolve_session_subdir(_session_dir_path(session_dir), project_name)
+    return subdir / SESSION_FILENAME
+
+
+def _resolve_session_subdir(root: Path, project_name: str | None) -> Path:
+    """Return _pending/ when no project_name is set, else <project_name>/."""
+    if not project_name or not str(project_name).strip():
+        return root / PENDING_SUBDIR
+    return root / str(project_name).strip()
 
 
 def _session_dir_path(session_dir: str | Path) -> Path:

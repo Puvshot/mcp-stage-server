@@ -232,7 +232,7 @@ def test_debug_mode_blocks_workout_until_end_debug_and_summarize_details_pass(tm
     connect_payload = connect()
     assert connect_payload["ok"] is True
 
-    assert mcp_mss_set_mode(mode="debug")["ok"] is True
+    assert mcp_mss_set_mode(mode="debug", project_name="TestDebugProject")["ok"] is True
 
     blocked_without_end_debug = mcp_mss_workout(note="brainstorm")
     assert blocked_without_end_debug["ok"] is False
@@ -278,7 +278,7 @@ def test_status_matches_gate_priority_for_debug_and_workout_modes(tmp_path: Path
     connect_payload = connect()
     assert connect_payload["ok"] is True
 
-    assert mcp_mss_set_mode(mode="debug")["ok"] is True
+    assert mcp_mss_set_mode(mode="debug", project_name="TestDebugProject")["ok"] is True
     debug_status_payload = mcp_mss_status()
     assert debug_status_payload["ok"] is True
     assert debug_status_payload["next_actions"] == [

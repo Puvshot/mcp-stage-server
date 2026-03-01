@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,7 @@ from mss.engines.session_actions_policy import (
 )
 from mss.storage.artifact_store import get_artifact as get_stored_artifact
 from mss.storage.session_store import (
+    PENDING_SUBDIR,
     create_session,
     get_active_session,
     save_session,
@@ -46,13 +48,14 @@ def connect() -> dict[str, Any]:
     """Create or resume active MSS session and return deterministic onboarding payload.
 
     This tool is idempotent for an already active valid session.
+    New sessions start in _pending/ subdirectory until set_mode is called.
     """
     session_dir = _session_dir()
     session_dir.mkdir(parents=True, exist_ok=True)
 
     active_session = get_active_session(session_dir=session_dir)
     if active_session is None:
-        # Fix A: project_name: None w nowej sesji
+        # Nowa sesja zawsze startuje w _pending/
         created_session_payload = create_session(
             session_dir=session_dir,
             session_payload={
@@ -63,7 +66,8 @@ def connect() -> dict[str, Any]:
                 "project_name": None,
             },
         )
-        set_active_session(session_dir=session_dir, session_id=str(created_session_payload["session_id"]))
+        session_id = str(created_session_payload["session_id"])
+        set_active_session(session_dir=session_dir, session_id=session_id, project_name=None)
         active_session = created_session_payload
 
     project_summaries = discover_projects(_projects_dir())
@@ -149,7 +153,9 @@ def status() -> dict[str, Any]:
 def set_mode(mode: str, project_name: str | None = None) -> dict[str, Any]:
     """Set active session mode and return deterministic mode-specific next actions.
 
-    For mode='workout', project_name is required. If not provided, returns an error.
+    For mode='workout' or mode='debug', project_name is required.
+    If not provided, returns an error.
+    Migrates session from _pending/ to <project_name>/ on first mode set.
     This tool is idempotent for repeated calls with the same mode and project_name.
     """
     if not isinstance(mode, str):
@@ -191,8 +197,8 @@ def set_mode(mode: str, project_name: str | None = None) -> dict[str, Any]:
             warnings=["active_session_not_found"],
         )
 
-    # Fix G: project_name wymagany dla trybu workout
-    if normalized_mode == "workout":
+    # project_name wymagany dla workout i debug
+    if normalized_mode in {"workout", "debug"}:
         normalized_project_name = str(project_name).strip() if project_name else ""
         if not normalized_project_name:
             return _response(
@@ -200,12 +206,33 @@ def set_mode(mode: str, project_name: str | None = None) -> dict[str, Any]:
                 session_id=None,
                 mode=None,
                 project_name=None,
-                message="Podaj nazwę projektu (project_name) przed rozpoczęciem workout.",
+                message="Podaj nazwę projektu (project_name) przed rozpoczęciem trybu.",
                 artifacts=[],
                 next_actions=[_action("status", "Sprawdź aktualny stan")],
-                warnings=["project_name_required_for_workout"],
+                warnings=["project_name_required"],
             )
+
+        # Migracja _pending/ → <project_name>/ jeśli sesja jeszcze bez projektu
+        current_project = active_session.get("project_name")
+        if not current_project:
+            migrate_warnings = _migrate_pending(session_dir, normalized_project_name)
+            if migrate_warnings:
+                return _response(
+                    ok=False,
+                    session_id=None,
+                    mode=None,
+                    project_name=None,
+                    message="Błąd migracji sesji z _pending/ do folderu projektu.",
+                    artifacts=[],
+                    next_actions=[_action("status", "Sprawdź aktualny stan")],
+                    warnings=migrate_warnings,
+                )
         active_session["project_name"] = normalized_project_name
+        set_active_session(
+            session_dir=session_dir,
+            session_id=str(active_session["session_id"]),
+            project_name=normalized_project_name,
+        )
 
     active_session["mode"] = normalized_mode
     save_session(session_dir=session_dir, session_payload=active_session)
@@ -227,7 +254,7 @@ def new_session() -> dict[str, Any]:
     """Create a new MSS session and set it as active, archiving the current one.
 
     The previous session is preserved on disk but is no longer active.
-    project_name is set later via set_mode workout.
+    New session starts in _pending/ until set_mode is called.
     This tool is idempotent — always returns the newly created session.
     """
     session_dir = _session_dir()
@@ -242,7 +269,7 @@ def new_session() -> dict[str, Any]:
             "project_name": None,
         },
     )
-    set_active_session(session_dir=session_dir, session_id=str(created["session_id"]))
+    set_active_session(session_dir=session_dir, session_id=str(created["session_id"]), project_name=None)
     return _response(
         ok=True,
         session_id=str(created["session_id"]),
@@ -265,6 +292,32 @@ def _action_connect() -> list[dict[str, str]]:
         _action("mode debug", "Uruchamia tryb debug"),
         _action("mode workout", "Uruchamia tryb workout"),
     ]
+
+
+def _migrate_pending(session_dir: Path, project_name: str) -> list[str]:
+    """Move _pending/ subdirectory contents to <project_name>/ and remove _pending/.
+
+    Returns list of warning strings on failure, empty list on success.
+    """
+    pending_dir = session_dir / PENDING_SUBDIR
+    target_dir = session_dir / project_name
+    if not pending_dir.exists():
+        return []
+    try:
+        if target_dir.exists():
+            # Merge: przenieś każdy plik z _pending/ do target_dir
+            for item in pending_dir.iterdir():
+                dest = target_dir / item.name
+                if not dest.exists():
+                    shutil.move(str(item), str(dest))
+        else:
+            shutil.move(str(pending_dir), str(target_dir))
+        # Usuń _pending/ jeśli jeszcze istnieje
+        if pending_dir.exists():
+            shutil.rmtree(str(pending_dir))
+    except OSError as exc:
+        return [f"pending_migration_failed: {exc}"]
+    return []
 
 
 def _action(command: str, description: str) -> dict[str, str]:

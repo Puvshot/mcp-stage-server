@@ -79,7 +79,7 @@ def test_status_next_actions_for_audit_mode_depends_on_audit_artifact(tmp_path: 
     ]
 
 
-def test_status_next_actions_for_planning_mode_with_preplan_artifact(tmp_path: Path, monkeypatch) -> None:
+def test_status_next_actions_for_planning_mode_with_prepare_artifact(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("MSS_SESSION_DIR", str(tmp_path))
     connect_payload = connect()
     set_mode(mode="planning")
@@ -87,7 +87,7 @@ def test_status_next_actions_for_planning_mode_with_preplan_artifact(tmp_path: P
     _set_session_artifacts(
         session_dir=tmp_path,
         session_id=str(connect_payload["session_id"]),
-        artifacts=[{"name": "preplan", "version": 2}],
+        artifacts=[{"name": "prepare", "version": 1}],
     )
 
     response_payload = status()
@@ -103,7 +103,7 @@ def test_set_mode_persists_and_returns_deterministic_actions(tmp_path: Path, mon
     monkeypatch.setenv("MSS_SESSION_DIR", str(tmp_path))
     connect()
 
-    debug_payload = set_mode(mode="debug")
+    debug_payload = set_mode(mode="debug", project_name="TestDebugProject")
     assert debug_payload["ok"] is True
     assert debug_payload["mode"] == "debug"
     assert debug_payload["next_actions"] == [
@@ -277,7 +277,7 @@ def test_status_prioritizes_workout_gate_and_hides_project_hints(tmp_path: Path,
 def test_status_prioritizes_debug_gate_with_end_debug_then_summarize_details(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("MSS_SESSION_DIR", str(tmp_path))
     connect_payload = connect()
-    set_mode(mode="debug")
+    set_mode(mode="debug", project_name="TestDebugProject")
 
     without_end_debug_payload = status()
     assert without_end_debug_payload["ok"] is True
@@ -299,7 +299,20 @@ def test_status_prioritizes_debug_gate_with_end_debug_then_summarize_details(tmp
 
 
 def _set_session_artifacts(session_dir: Path, session_id: str, artifacts: list[dict[str, object]]) -> None:
-    session_path = session_dir / f"{session_id}.json"
+    # Nowy format: pliki sesji w _pending/session.json (przed set_mode) lub <project>/session.json
+    # Najpierw szukamy w _pending/, potem w podkatalogach
+    session_path = session_dir / "_pending" / "session.json"
+    if not session_path.exists():
+        # Szukaj w podkatalogach (po set_mode z project_name)
+        for subdir in session_dir.iterdir():
+            if subdir.is_dir() and subdir.name != "_pending":
+                candidate = subdir / "session.json"
+                if candidate.exists():
+                    import json as _json
+                    payload = _json.loads(candidate.read_text(encoding="utf-8"))
+                    if str(payload.get("session_id", "")) == session_id:
+                        session_path = candidate
+                        break
     session_payload = json.loads(session_path.read_text(encoding="utf-8"))
     session_payload["artifacts"] = artifacts
     session_path.write_text(json.dumps(session_payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -364,7 +377,7 @@ def test_set_mode_workout_requires_project_name(tmp_path: Path, monkeypatch) -> 
     # bez project_name — powinno zwrócić błąd
     response = set_mode(mode="workout")
     assert response["ok"] is False
-    assert "project_name_required_for_workout" in response["warnings"]
+    assert "project_name_required" in response["warnings"]
 
     # z project_name — sukces
     response = set_mode(mode="workout", project_name="Projekt Alpha")

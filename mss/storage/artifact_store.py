@@ -11,7 +11,23 @@ from typing import Any
 from mss.storage.session_store import load_session, save_session
 
 
-ARTIFACTS_DIRNAME = "artifacts"
+# Mapowanie nazwa artefaktu → podfolder fazy (stały lub zależny od mode)
+# Wartość None = folder wyznaczany dynamicznie z mode sesji.
+_ARTIFACT_PHASE_MAP: dict[str, str | None] = {
+    "audit": "audit",
+    "prepare": "prepare",
+    "planning": "planning",
+    "package": "package",
+    "run": "run",
+    "workout": "workout",
+    "end_workout": "workout",
+    "debug": "debug",
+    "end_debug": "debug",
+    # summary i summarize_details trafiają do wspólnego folderu summary/,
+    # niezależnie od trybu sesji (workout lub debug)
+    "summary": "summary",
+    "summarize_details": "summary",
+}
 
 
 def save_artifact(
@@ -19,6 +35,7 @@ def save_artifact(
     session_id: str,
     artifact_name: str,
     artifact_payload: Any,
+    mode: str | None = None,
 ) -> dict[str, Any] | None:
     """Persist one versioned artifact for a session and update metadata in session file."""
     normalized_session_id = str(session_id).strip()
@@ -26,9 +43,12 @@ def save_artifact(
     if not normalized_session_id or not normalized_artifact_name:
         return None
 
-    session_payload = load_session(session_dir=session_dir, session_id=normalized_session_id)
+    session_payload = load_session(session_dir=session_dir, project_name=_project_name_from_session_id(session_dir, normalized_session_id))
     if session_payload is None:
         return None
+
+    resolved_mode = mode or str(session_payload.get("mode") or "").strip().lower() or None
+    project_name = str(session_payload.get("project_name") or "").strip() or None
 
     artifact_version = _next_artifact_version(session_payload, normalized_artifact_name)
     saved_at = _now_iso()
@@ -40,7 +60,7 @@ def save_artifact(
     }
 
     _write_json_atomic(
-        _artifact_path(session_dir, normalized_session_id, normalized_artifact_name, artifact_version),
+        _artifact_path(session_dir, project_name, normalized_artifact_name, artifact_version, resolved_mode),
         artifact_document,
     )
 
@@ -68,6 +88,7 @@ def get_artifact(
     session_dir: str | Path,
     session_id: str,
     artifact_name: str,
+    mode: str | None = None,
 ) -> dict[str, Any] | None:
     """Load latest artifact document for a given session and artifact name."""
     normalized_session_id = str(session_id).strip()
@@ -75,9 +96,12 @@ def get_artifact(
     if not normalized_session_id or not normalized_artifact_name:
         return None
 
-    session_payload = load_session(session_dir=session_dir, session_id=normalized_session_id)
+    session_payload = load_session(session_dir=session_dir, project_name=_project_name_from_session_id(session_dir, normalized_session_id))
     if session_payload is None:
         return None
+
+    resolved_mode = mode or str(session_payload.get("mode") or "").strip().lower() or None
+    project_name = str(session_payload.get("project_name") or "").strip() or None
 
     artifacts_metadata = list_artifacts(session_dir=session_dir, session_id=normalized_session_id)
     artifact_version = 0
@@ -90,7 +114,7 @@ def get_artifact(
 
     if artifact_version <= 0:
         return None
-    return _read_json(_artifact_path(session_dir, normalized_session_id, normalized_artifact_name, artifact_version))
+    return _read_json(_artifact_path(session_dir, project_name, normalized_artifact_name, artifact_version, resolved_mode))
 
 
 def list_artifacts(session_dir: str | Path, session_id: str) -> list[dict[str, Any]]:
@@ -99,7 +123,7 @@ def list_artifacts(session_dir: str | Path, session_id: str) -> list[dict[str, A
     if not normalized_session_id:
         return []
 
-    session_payload = load_session(session_dir=session_dir, session_id=normalized_session_id)
+    session_payload = load_session(session_dir=session_dir, project_name=_project_name_from_session_id(session_dir, normalized_session_id))
     if session_payload is None:
         return []
 
@@ -129,10 +153,40 @@ def list_artifacts(session_dir: str | Path, session_id: str) -> list[dict[str, A
     return [latest_versions[name] for name in sorted(latest_versions)]
 
 
-def _artifact_path(session_dir: str | Path, session_id: str, artifact_name: str, version: int) -> Path:
-    safe_artifact_name = _safe_artifact_name(artifact_name)
-    artifacts_dir = Path(session_dir).resolve() / ARTIFACTS_DIRNAME / session_id
-    return artifacts_dir / f"{safe_artifact_name}.v{version}.json"
+def _artifact_phase(artifact_name: str, mode: str | None) -> str:
+    """Resolve phase folder for an artifact name."""
+    return _ARTIFACT_PHASE_MAP.get(artifact_name) or "session"
+
+
+def _artifact_path(
+    session_dir: str | Path,
+    project_name: str | None,
+    artifact_name: str,
+    version: int,
+    mode: str | None,
+) -> Path:
+    safe_name = _safe_artifact_name(artifact_name)
+    phase = _artifact_phase(artifact_name, mode)
+    root = Path(session_dir).resolve()
+    if project_name:
+        return root / project_name / phase / f"{safe_name}.v{version}.json"
+    return root / phase / f"{safe_name}.v{version}.json"
+
+
+def _project_name_from_session_id(session_dir: str | Path, session_id: str) -> str | None:
+    """Read active.json to get project_name for the given session_id."""
+    active_path = Path(session_dir).resolve() / "active.json"
+    if not active_path.exists():
+        return None
+    try:
+        with active_path.open("r", encoding="utf-8") as f:
+            payload = json.load(f)
+        if str(payload.get("session_id", "")).strip() == session_id:
+            raw = payload.get("project_name")
+            return str(raw).strip() if raw else None
+    except (OSError, json.JSONDecodeError):
+        pass
+    return None
 
 
 def _safe_artifact_name(artifact_name: str) -> str:

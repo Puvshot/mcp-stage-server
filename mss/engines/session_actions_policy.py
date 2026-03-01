@@ -67,7 +67,7 @@ def next_actions_for_status(
         return [_action("audit", "Uruchom audyt kodu")]
 
     if mode == "planning":
-        if "preplan" in artifact_names:
+        if "prepare" in artifact_names:
             return [_action("plan", "Wygeneruj plan implementacji")]
         return [_action("preplan", "Wygeneruj preplan")]
 

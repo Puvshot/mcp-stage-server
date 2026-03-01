@@ -64,11 +64,30 @@ def workout(note: str | None = None) -> dict[str, Any]:
 
 def end_workout(summary: str | None = None) -> dict[str, Any]:
     """Persist end_workout artifact and return next actions."""
-    return _save_named_artifact(
+    active_session = _active_session()
+    if active_session is None:
+        return _missing_session_response()
+    session_id = str(active_session.get("session_id", "")).strip()
+    saved_artifact = storage_save_artifact(
+        session_dir=_session_dir(),
+        session_id=session_id,
         artifact_name="end_workout",
-        payload={"summary": _normalize_optional_text(summary)},
-        next_actions=[_action("mss.summarize", "Podsumuj sesję")],
+        artifact_payload={"summary": _normalize_optional_text(summary)},
     )
+    if saved_artifact is None:
+        return _artifact_save_failed_response()
+    # Fix J: instrukcja dla agenta — zapytaj użytkownika przed zapisem podsumowania
+    return {
+        "ok": True,
+        "artifact": saved_artifact,
+        "message": (
+            "Sesja workout zamknięta. Zapytaj użytkownika: "
+            "'Chcesz coś dopracować, czy zapisujemy podsumowanie i przechodzimy do audytu?' "
+            "Jeśli gotowe — wywołaj mss.summarize."
+        ),
+        "next_actions": [_action("mss.summarize", "Podsumuj sesję")],
+        "warnings": [],
+    }
 
 
 def summarize(summary: str | None = None, files_affected: list[str] | None = None) -> dict[str, Any]:
@@ -95,18 +114,18 @@ def summarize(summary: str | None = None, files_affected: list[str] | None = Non
     )
     if saved_artifact is None:
         return _artifact_save_failed_response()
+    # Fix H: STOP — agent musi od razu wywołać summarize_details bez pytania użytkownika
     return {
         "ok": True,
         "artifact": saved_artifact,
         "next_actions": [
             _action("mss.summarize_details", "Uzupełnij szczegóły per plik"),
-            _action("mss.list_artifacts", "Wyświetl artefakty sesji"),
         ],
         "warnings": [],
-        # Fix C: wymagane pole message
         "message": (
-            "Kontrakt projektu (SUMMARY) zapisany. Opisuje cel, zakres i ograniczenia. "
-            "Następnie uzupełnij szczegóły per plik przez mss.summarize_details."
+            "STOP. Kontrakt projektu (SUMMARY) zapisany. "
+            "WYMAGANE: wywołaj natychmiast mss.summarize_details — "
+            "nie pytaj użytkownika, nie wprowadzaj zmian w kodzie aż do uzyskania PASS."
         ),
     }
 
@@ -279,11 +298,30 @@ def debug(findings: str | None = None) -> dict[str, Any]:
 
 def end_debug(summary: str | None = None) -> dict[str, Any]:
     """Persist end_debug artifact and return next actions."""
-    return _save_named_artifact(
+    active_session = _active_session()
+    if active_session is None:
+        return _missing_session_response()
+    session_id = str(active_session.get("session_id", "")).strip()
+    saved_artifact = storage_save_artifact(
+        session_dir=_session_dir(),
+        session_id=session_id,
         artifact_name="end_debug",
-        payload={"summary": _normalize_optional_text(summary)},
-        next_actions=[_action("mss.status", "Sprawdź status sesji")],
+        artifact_payload={"summary": _normalize_optional_text(summary)},
     )
+    if saved_artifact is None:
+        return _artifact_save_failed_response()
+    # Fix J: instrukcja dla agenta — zapytaj użytkownika przed zapisem podsumowania
+    return {
+        "ok": True,
+        "artifact": saved_artifact,
+        "message": (
+            "Sesja debug zamknięta. Zapytaj użytkownika: "
+            "'Chcesz coś dopracować, czy zapisujemy podsumowanie i przechodzimy do audytu?' "
+            "Jeśli gotowe — wywołaj mss.summarize."
+        ),
+        "next_actions": [_action("mss.summarize", "Podsumuj sesję")],
+        "warnings": [],
+    }
 
 
 def list_artifacts() -> dict[str, Any]:
@@ -333,6 +371,7 @@ def _save_named_artifact(
         return _missing_session_response()
 
     session_id = str(active_session.get("session_id", "")).strip()
+    session_mode = str(active_session.get("mode") or "").strip().lower() or None
     if gate_tool_name is not None:
         flow_state = _collect_flow_state(session_id)
         gate_decision = gate_for_artifact_tool(
@@ -345,11 +384,13 @@ def _save_named_artifact(
         if gate_decision["blocked"]:
             return _gate_blocked_response(gate_decision)
 
+    # Stage 3.1: przekazuje mode do warstwy storage
     saved_artifact = storage_save_artifact(
         session_dir=_session_dir(),
         session_id=session_id,
         artifact_name=artifact_name,
         artifact_payload=payload,
+        mode=session_mode,
     )
     if saved_artifact is None:
         return _artifact_save_failed_response()
